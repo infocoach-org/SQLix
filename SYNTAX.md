@@ -96,7 +96,7 @@ SELECT [ DISTINCT ] { * | $expression [ AS $output_name ]}, ...
   [ WHERE $boolean_condition ]
   [ GROUP BY $expression, ... ]
   [ HAVING $boolean_expression, ... ]
-  [ UNION $select ] 
+  [ UNION [ ALL ] $select ] 
   [ ORDER BY $expression [ { ASC | DESC } ], ... ]
   [ LIMIT $count ]
   [ OFFSET $start ]
