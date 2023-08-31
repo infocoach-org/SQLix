@@ -1,5 +1,8 @@
 {
+  "include": ["**/*.ts"],
   "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
@@ -7,6 +10,11 @@
     "strict": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "noImplicitAny": true // could cause problem with svelte
+
+    "noImplicitAny": true, // could cause problem with svelte
+    "strictPropertyInitialization": true,
+    "outDir": "out",
+    "lib": ["ES2017", "DOM"],
+    "target": "ES2017"
   }
 }
