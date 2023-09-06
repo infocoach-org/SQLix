@@ -1,4 +1,4 @@
-enum Keyword {
+export enum Keyword {
   create = "create",
   select = "select",
   table = "table",
@@ -37,9 +37,11 @@ enum Keyword {
   union = "union",
   asc = "asc",
   desc = "desc",
+  true = "true",
+  false = "false",
 }
 
-enum Operator {
+export enum Operator {
   equal = "=",
   notEqual = "<>",
   greater = ">",
@@ -52,21 +54,22 @@ enum Operator {
   divide = "/",
 }
 
-enum TokenType {
-  keyword,
-  operator,
-  identifier,
-  number,
-  string,
-  dot,
-  openParantheses,
-  semicolon,
-  comma,
-  closedParantheses,
+export enum TokenType {
+  keyword = "keyword",
+  operator = "operator",
+  identifier = "identifier",
+  number = "number",
+  string = "string",
+  dot = ".",
+  openParantheses = "(",
+  semicolon = ")",
+  comma = ",",
+  closedParantheses = ")",
+  eof = "end of input",
 }
 
 // TODO: is tokenId needed?
-type Token =
+export type Token = { tokenId?: any } & (
   | { type: TokenType.keyword; tokenId: Keyword }
   | { type: TokenType.operator; tokenId: Operator }
   | { type: TokenType.identifier; identifier: string }
@@ -76,9 +79,11 @@ type Token =
   | { type: TokenType.semicolon }
   | { type: TokenType.comma }
   | { type: TokenType.openParantheses }
-  | { type: TokenType.closedParantheses };
+  | { type: TokenType.closedParantheses }
+  | { type: TokenType.eof }
+);
 
-type TokenLocation = {
+export type TokenLocation = {
   type: TokenType;
   begin: number;
   end: number;
@@ -611,6 +616,11 @@ export class Tokenizer {
       }
       this.lastValidGenerator = this.validErrorGenerator ?? this.validGenerator;
     }
+    this.tokens.push({
+      type: TokenType.eof,
+      begin: this.charIndex,
+      end: this.charIndex + 1,
+    });
     return null;
   }
 }

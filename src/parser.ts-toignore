@@ -1,0 +1,216 @@
+import { Keyword, Token, TokenLocation, TokenType } from "./tokenizer";
+
+class ParseError extends Error {
+  constructor(public location: TokenLocation, public message: string) {
+    super();
+  }
+}
+
+type ParserReturnType<Value> =
+  | { error: ParseError }
+  | { error: null; value: Value; used: number };
+
+type TryParserReturnType<Value> = { val: Value; used: number } | null;
+
+interface Parser<T> {
+  parse(locations: TokenLocation[], startIndex: number): ParserReturnType<T>;
+}
+
+interface TryParser<T> {
+  tryParse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): TryParserReturnType<T>;
+}
+
+class MultipleTryTokenParser<T> implements Parser<T> {
+  constructor(private parser: TryParser<T>[], private errorMessage: string) {}
+
+  tryParse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): TryParserReturnType<T> {
+    for(const parser of)
+  }
+}
+
+class MultipleTokenValueParser<
+  ParsersType extends Record<string, Parser<unknown>>
+> implements
+    Parser<{
+      [ParserKey in keyof ParsersType]: ParsersType[ParserKey] extends Parser<
+        infer ParserType
+      >
+        ? ParserType
+        : never;
+    }>
+{
+  constructor(
+    private parsers: ParsersType,
+    private parserOrder: (keyof ParsersType)[]
+  ) {}
+
+  public parse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): ParserReturnType<{
+    [ParserKey in keyof ParsersType]: ParsersType[ParserKey] extends Parser<
+      infer ParserType
+    >
+      ? ParserType
+      : never;
+  }> {
+    let used = 0;
+    let values = {} as {
+      [ParserKey in keyof ParsersType]: ParsersType[ParserKey] extends Parser<
+        infer ParserType
+      >
+        ? ParserType
+        : never;
+    };
+    for (const key of this.parserOrder) {
+      const parseResult = this.parsers[key].parse(locations, startIndex + used);
+      if (parseResult.error !== null) {
+        return parseResult;
+      }
+      used += parseResult.used;
+      values[key] = parseResult.value as any;
+    }
+    return { value: values, used, error: null };
+  }
+}
+
+class OptionalValueParser<T> implements Parser<T | null> {
+  constructor(private parser: Parser<T>) {}
+
+  public parse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): ParserReturnType<T | null> {
+    const result: any = this.parser.parse(locations, startIndex);
+    if (result.error) {
+      result.error = null;
+      result.value = null;
+      result.used = 0;
+    }
+    return result;
+  }
+}
+
+
+
+class TypeTokenParser implements Parser<DataType> {
+  static errorMessage =
+    "a type was expected, allowed types: INT/INTEGER, FLOAT/NUMBER, TEXT, BOOLEAN";
+  public parse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): ParserReturnType<DataType> {
+    const token = locations[startIndex];
+    if (token.type !== TokenType.identifier) {
+      return { error: new ParseError(token, TypeTokenParser.errorMessage) };
+    }
+    const type = typeMapping[token.identifier];
+    if (!type) {
+      return { error: new ParseError(token, TypeTokenParser.errorMessage) };
+    }
+    return { error: null, value: type, used: 1 };
+  }
+}
+
+class KeywordTokenParser implements Parser<true> {
+  constructor(private keywords: Keyword[]) {
+  }
+
+  public parse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): ParserReturnType<true> {
+    for (let i = 0; i < this.keywords.length; i++) {
+      const token = locations[i + startIndex];
+      const keyword = this.keywords[i];
+      if (token.tokenId !== keyword) {
+        return {
+          error: new ParseError(
+            token,
+            `keyword '${keyword.toUpperCase()}' expected`
+          ),
+        };
+      }
+    }
+    return { used: this.keywords.length, value: true, error: null };
+  }
+}
+
+class IdentifierParser implements Parser<string> {
+  constructor(private identifierName: string = "identifier") {
+  }
+  public parse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): ParserReturnType<string> {
+    const token = locations[startIndex];
+    if (token.type !== TokenType.identifier) {
+      return {
+        error: new ParseError(token, `expected ${this.identifierName}`),
+      };
+    }
+    return { error: null, value: token.identifier, used: 1 };
+  }
+}
+
+class NumberParser implements Parser<number> {
+  constructor() {
+  }
+  public parse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): ParserReturnType<number> {
+    const token = locations[startIndex];
+    if (token.type !== TokenType.number) {
+      return {
+        error: new ParseError(token, `number expected`),
+      };
+    }
+    return { error: null, value: token.value, used: 1 };
+  }
+}
+
+class TypeParser<Type extends TokenType>
+  implements Parser<{ type: Type } & TokenLocation>
+{
+  constructor(
+    private tokenType: Type,
+    private validation?:
+      | ((token: { type: Type } & TokenLocation) => string | null)
+      | undefined
+  ) {
+  }
+  public parse(
+    locations: TokenLocation[],
+    startIndex: number
+  ): ParserReturnType<{ type: Type } & TokenLocation> {
+    const token = locations[startIndex];
+    if (token.type === this.tokenType) {
+      const errorMessage: string | null =
+        this.validation?.(token as { type: Type } & TokenLocation) ?? null;
+      if (errorMessage !== null) {
+        return {
+          error: new ParseError(token, errorMessage),
+        };
+      }
+    } else {
+      return {
+        error: new ParseError(
+          token,
+          `Token of type ${this.tokenType} expected`
+        ),
+      };
+    }
+    return {
+      value: token as { type: Type } & TokenLocation,
+      used: 1,
+      error: null,
+    };
+  }
+}

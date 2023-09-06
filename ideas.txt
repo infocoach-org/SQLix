@@ -1,0 +1,3 @@
+delete type FLOAT and INT => only number
+
+delete type 

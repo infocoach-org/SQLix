@@ -58,19 +58,18 @@ All column and table names cannot be any existing keywords or datatypes.
 
 ```SQL
 CREATE TABLE $table_name(
-  $column_name [ $data_type ] [ PRIMARY KEY ]
+  {
+    $column_name [ $data_type ] [ { NOT NULL [ PRIMARY KEY ] | PRIMARY KEY [ NOT NULL ]} ]
     REFERENCES $other_table_name 
-    [ ( $other_column_name, ... ) ]
-  [ , ... ]
-  [ 
+    [ ( $other_column_name, ... ) ] |
     [ CONSTRAINT $constraint_name ] 
     { 
       PRIMARY KEY ($primary_column_name, ... ) |
       FOREIGN KEY ($primary_column_name, ... ) 
         REFERENCES $other_table_name 
         [ ( $other_column_name, ... ) ] 
-    } 
-  ]
+    }
+  }
   [ , ... ]
 )
 
@@ -79,6 +78,8 @@ CREATE TABLE $table_name(
 Notes:
 - contraint names will be ignored and not saved in any metadata
 - column or constaint declarations have to be seperated by line
+- primary key (single or multiple columns) can never be null
+- auto increment is not currently supported but might be in the future
 
 ### Inserting columns
 
@@ -108,7 +109,7 @@ A select without `ORDER BY`, `LIMIT` and `OFFSET`
 `$from_item` can be:
 ```sql
 {
-  $table_name [ .* ]
+  { $table_name | $sub_select } [ .* ]
     [ [ AS ] $table_alias [ ( $column_alias_list ) ] ] |
   ( $select_statement ) [ AS ] $select_name [ ( $column_alias_list ) ]
 }
