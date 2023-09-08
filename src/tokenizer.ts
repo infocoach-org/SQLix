@@ -68,7 +68,7 @@ export enum TokenType {
   eof = "end of input",
 }
 
-// TODO: is tokenId needed?
+// TODO: improve tokenId?
 export type Token = { tokenId?: any } & (
   | { type: TokenType.keyword; tokenId: Keyword }
   | { type: TokenType.operator; tokenId: Operator }
@@ -100,7 +100,11 @@ enum TokenErrorType {
   notValidToken,
 }
 
-type TokenError =
+export class TokenError {
+  constructor(public information: TokenErrorInformation) {}
+}
+
+export type TokenErrorInformation =
   | { type: TokenErrorType.characterNotUnderstood; character: number }
   | {
       type: TokenErrorType.notValidToken;
@@ -549,18 +553,18 @@ export class Tokenizer {
   private createError(): TokenError {
     if (this.lastValidGenerator?.useForError) {
       const message = this.lastValidGenerator?.createErrorMessage();
-      return {
+      return new TokenError({
         type: TokenErrorType.notValidToken,
         tokenBegin: this.tokenBegin,
         tokenErrorCharacter: this.charIndex,
         tokenType: this.lastValidGenerator.type!,
         customErrorString: message,
-      };
+      });
     } else {
-      return {
+      return new TokenError({
         type: TokenErrorType.characterNotUnderstood,
         character: this.charIndex,
-      };
+      });
     }
   }
 
