@@ -131,3 +131,4 @@ dist
 
 # old files
 **/*.old
+**/.DS_STORE

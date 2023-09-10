@@ -1,11 +1,11 @@
-import { ColumnMetdata, DataType, Relation, Table } from "../../database";
+import { ColumnMetdata, DataType, Relation, Table } from "../database";
 import {
   StatementParser,
   StatementParserManager,
   typeMapping,
-} from "../../nparser";
-import { ParseError } from "../../parse_error";
-import { Keyword, TokenLocation, TokenType } from "../../tokenizer";
+} from "../nparser";
+import { ParseError } from "../parse_error";
+import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
 interface ColumnToInsert {
   name: string;

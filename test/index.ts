@@ -1,7 +1,7 @@
 import { Database } from "../src/database";
 import { SingleStatementExecutor } from "../src/nparser";
 import { ParseError } from "../src/parse_error";
-import { CreateParserManager } from "../src/statements/add/create";
+import { CreateParserManager } from "../src/statements/create";
 
 const database = new Database();
 
