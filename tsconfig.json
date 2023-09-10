@@ -1,5 +1,5 @@
 {
-  "include": ["**/*.ts", "src/parser.ts-toignore"],
+  "include": ["**/*.ts", "test/index.ts"],
   "compilerOptions": {
     "module": "CommonJS",
     "moduleResolution": "node",

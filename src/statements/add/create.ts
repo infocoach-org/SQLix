@@ -1,27 +1,11 @@
-// create table abc(a int primary key, b int primary key); (not possible)
-
-import { ColumnMetdata, DataType, Database } from "./database";
-import { ParseError } from "./parse_error";
-import { typeMapping } from "./nparser";
-import { Keyword, TokenLocation, TokenType } from "./tokenizer";
-
-// create table abc(a int primary key not null); (possible)
-// create table abc(a int not null primary key); (possible)
-
-// => not null and primary/foreign keys can just be listed without any specific order
-
-// works, for some reason :sob:
-// create table abcd(
-// a int primary key references abcde);
-
-// create table abcde(
-// a int primary key references abcd);
-
-interface TableToInsert {
-  nameToken: TokenLocation;
-  primaryKeys: string[];
-  columns: ColumnToInsert[];
-}
+import { ColumnMetdata, DataType, Relation, Table } from "../../database";
+import {
+  StatementParser,
+  StatementParserManager,
+  typeMapping,
+} from "../../nparser";
+import { ParseError } from "../../parse_error";
+import { Keyword, TokenLocation, TokenType } from "../../tokenizer";
 
 interface ColumnToInsert {
   name: string;
@@ -32,26 +16,33 @@ interface ColumnToInsert {
 interface RelationToInsert {
   tokenStart: TokenLocation;
   tokenEnd: TokenLocation;
-  tableFrom: string;
   tableTo: string;
   columnsFrom: string[];
   // if columnsTo is null, columnsFrom can only be not null
   columnsTo: string[] | null;
 }
 
-export class TableInserter {
-  constructor(private database: Database) {}
-  tables: Record<string, TableToInsert> = {};
-  relations: RelationToInsert[] = [];
-  tableExists(name: string): boolean {
-    return !!this.database.getTable(name) || name in this.tables;
-  }
+export class CreateParserManager extends StatementParserManager<null> {
+  statementName = "CREATE";
+  statementDescription = "create new tables with references to other tables";
+  firstKeyword = Keyword.create;
+  requiredStatementState = null;
+  parser = CreateParser;
+}
+
+export class CreateParser extends StatementParser {
+  private tableName: string = "";
+  private primaryKeyIsSet = false;
+  private primaryKeys: string[] = [];
+  private columns: ColumnToInsert[] = [];
+  private relations: RelationToInsert[] = [];
+  private primaryKeyTokens?: [TokenLocation, TokenLocation];
 
   private static relationEqual(
     a: RelationToInsert,
     b: RelationToInsert
   ): boolean {
-    if (a.tableFrom !== b.tableFrom || a.tableTo !== b.tableTo) {
+    if (a.tableTo !== b.tableTo) {
       return false;
     }
     if (
@@ -88,166 +79,150 @@ export class TableInserter {
     return true;
   }
 
-  newRelation(relation: RelationToInsert) {
-    // check if same relation already exists
+  private newRelation(relation: RelationToInsert) {
     if (
-      !this.relations.some((exisitingRelation) =>
-        TableInserter.relationEqual(exisitingRelation, relation)
+      this.relations.some((existingRelation) =>
+        CreateParser.relationEqual(relation, existingRelation)
       )
-    ) {
-      this.relations.push(relation);
-    } else {
-      console.log("WARNING: duplicate relation cought");
-    }
+    )
+      return;
+    this.relations.push(relation);
   }
 
-  newTable(name: string, table: TableToInsert) {
-    this.tables[name] = table;
-  }
-
-  insertTables() {
-    for (const tableName in this.tables) {
-      const table = this.tables[tableName];
-      // check if primary keys exist
-      for (const primaryKey of table.primaryKeys) {
-        if (!table.columns.some((column) => column.name === primaryKey)) {
-          throw new ParseError(
-            `PRIMARY KEY ${primaryKey} does not exist in table ${tableName}`,
-            table.nameToken
-          );
-        }
+  private createNewTable() {
+    // check if primary keys exist
+    for (const primaryKey of this.primaryKeys) {
+      if (!this.columns.some((column) => column.name === primaryKey)) {
+        throw new ParseError(
+          `PRIMARY KEY ${primaryKey} does not exist in table ${this.tableName}`,
+          this.primaryKeyTokens![0],
+          this.primaryKeyTokens![1]
+        );
       }
-      const columns: ColumnMetdata[] = table.columns.map((column) => {
-        if (table.primaryKeys.includes(column.name)) {
-          return {
-            name: column.name,
-            primary: true,
-            nullable: false,
-            type: column.type,
-            relationsTo: [],
-          };
-        }
+    }
+    const columns: ColumnMetdata[] = this.columns.map((column) => {
+      if (this.primaryKeys.includes(column.name)) {
         return {
           name: column.name,
-          primary: false,
-          nullable: column.nullable,
+          primary: true,
+          nullable: false,
           type: column.type,
           relationsTo: [],
         };
-      });
-      const columnsMapping: Record<string, number> = {};
-      for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-        const column = columns[columnIndex];
-        columnsMapping[column.name] = columnIndex;
       }
+      return {
+        name: column.name,
+        primary: false,
+        nullable: column.nullable,
+        type: column.type,
+        relationsTo: [],
+      };
+    });
+    const columnsMapping: Record<string, number> = {};
+    for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+      const column = columns[columnIndex];
+      columnsMapping[column.name] = columnIndex;
+    }
 
-      this.database.setTable(tableName, {
-        rows: [],
-        columnMetadata: columns,
-        fromRelationsMetdata: [],
-        toRelationsMetdata: [],
-        nameColumnIndexMapping: columnsMapping,
-        primaryColumnIds: table.primaryKeys.map((primaryColumnName) =>
-          columns.findIndex((column) => column.name === primaryColumnName)
+    const table: Table = {
+      rows: [],
+      columnMetadata: columns,
+      externalRelationsMetadata: [],
+      internalRelationsMetadata: [],
+      nameColumnIndexMapping: columnsMapping,
+      primaryColumnIds: this.primaryKeys.map((primaryColumnName) =>
+        columns.findIndex((column) => column.name === primaryColumnName)
+      ),
+    };
+
+    this.database.setTable(this.tableName, table);
+
+    for (const rawRelation of this.relations) {
+      const toTable = this.database.getTable(rawRelation.tableTo);
+      if (toTable === null) {
+        throw new ParseError(
+          `relation ${rawRelation.tableTo} does not exist`,
+          rawRelation.tokenStart,
+          rawRelation.tokenEnd
+        );
+      }
+      let toColumns: ColumnMetdata[];
+      if (rawRelation.columnsTo === null) {
+        toColumns = toTable.primaryColumnIds.map(
+          (id) => toTable.columnMetadata[id]
+        );
+        if (toColumns.length !== rawRelation.columnsFrom.length) {
+          throw new ParseError(
+            `PRIMARY KEY of relation ${rawRelation.tableTo} does not contain the same number of columns as the FOREIGN KEY`,
+            rawRelation.tokenStart,
+            rawRelation.tokenEnd
+          );
+        }
+      } else {
+        toColumns = rawRelation.columnsTo.map((columnName) => {
+          const column = toTable.columnMetadata.find(
+            (column) => column.name === columnName
+          );
+          if (!column) {
+            throw new ParseError(
+              `column ${columnName} not found in relation ${rawRelation.tableTo}`,
+              rawRelation.tokenStart,
+              rawRelation.tokenEnd
+            );
+          }
+          return column;
+        });
+        if (
+          toColumns.length !== toTable.primaryColumnIds.length ||
+          toColumns.some((column) => !column.primary)
+        ) {
+          throw new ParseError(
+            `FOREIGN KEY has to reference the full PRIMARY KEY of relation ${rawRelation.tableTo}`,
+            rawRelation.tokenStart,
+            rawRelation.tokenEnd
+          );
+        }
+      }
+      for (let i = 0; i < toColumns.length; i++) {
+        const fromColumnName = rawRelation.columnsFrom[i];
+        const fromColumn = table.columnMetadata.find(
+          (column) => column.name === fromColumnName
+        );
+        if (!fromColumn) {
+          throw new ParseError(
+            `column ${fromColumnName} does not exist in table ${this.tableName}`,
+            rawRelation.tokenStart,
+            rawRelation.tokenEnd
+          );
+        }
+        if (fromColumn.type !== toColumns[i].type) {
+          throw new ParseError(
+            "FOREIGN KEY and PRIMARY KEY columns do not match types",
+            rawRelation.tokenStart,
+            rawRelation.tokenEnd
+          );
+        }
+      }
+      const relation: Relation = {
+        fromColumnIds: rawRelation.columnsFrom.map((columnName) =>
+          table.columnMetadata.findIndex((column) => column.name === columnName)
         ),
-      });
+        from: table,
+        to: toTable,
+      };
+      table.internalRelationsMetadata.push(relation);
+      toTable.externalRelationsMetadata.push(relation);
+      toTable.rows.forEach((row) => row.push([]));
     }
   }
 
-  insertRelations(): void {}
-}
-
-export class TableCreate {
-  private tokens: TokenLocation[] = [];
-  private tokenIndex: number = 0;
-  private tableName: string = "";
-  private primaryKeyIsSet = false;
-  private primaryKeys: string[] = [];
-  private columns: ColumnToInsert[] = [];
-
-  constructor(private inserter: TableInserter) {}
-
-  private readNextToken() {
-    return this.tokens[this.tokenIndex++];
-  }
-
-  private readCurrentToken() {
-    return this.tokens[this.tokenIndex - 1];
-  }
-
-  private peekToken() {
-    return this.tokens[this.tokenIndex];
-  }
-
-  private expectType(
-    type: TokenType,
-    afterErrorMessage?: string | undefined,
-    error?: string | undefined
-  ) {
-    if (this.readNextToken().type !== type) {
-      throw error ?? `${type} expected` + (afterErrorMessage ?? "");
-    }
-  }
-  private expectKeyword(
-    keyword: Keyword,
-    afterErrorMessage?: string | undefined,
-    error?: string | undefined
-  ): TokenLocation {
-    const token = this.readNextToken();
-    if (token.tokenId !== keyword) {
-      throw (
-        error ??
-        `expected keyword ${keyword.toUpperCase()}${
-          afterErrorMessage ? " " + afterErrorMessage : ""
-        }`
-      );
-    }
-    return token;
-  }
-
-  private expectIdentifier(identifierName: string): string {
-    const token = this.readNextToken();
-    if (token.type !== TokenType.identifier) {
-      throw `expected ${identifierName}${
-        token.type === TokenType.keyword
-          ? `, keyword ${token.tokenId} cannot be used as a identifier`
-          : ""
-      }`;
-    }
-    return token.identifier;
-  }
-
-  private parseMoreThanOne(parseFunction: () => void): void {
-    parseFunction = parseFunction.bind(this);
-    parseFunction();
-    while (this.peekToken().type === TokenType.comma) {
-      this.readNextToken();
-      parseFunction();
-    }
-  }
-
-  private parseIdentifierList(identifierName: string): string[] {
-    const arr = [this.expectIdentifier(identifierName)];
-    while (this.peekToken().type === TokenType.comma) {
-      this.readNextToken();
-      const identifier = this.expectIdentifier(identifierName);
-      if (arr.includes(identifier)) {
-        throw `already mentioned ${identifierName} ${identifier}`;
-      }
-      arr.push(identifier);
-    }
-    return arr;
-  }
-
-  parse(tokens: TokenLocation[], tokenBeginIndex: number): number {
-    this.tokens = tokens;
-    this.tokenIndex = tokenBeginIndex;
+  public parseAndExecute(): void {
     try {
       this.expectKeyword(Keyword.table, "for CREATE TABLE statement");
-      const identifierToken = this.readNextToken();
+      const identifierToken = this.tokens.consume();
       if (identifierToken.type === TokenType.identifier) {
         this.tableName = identifierToken.identifier;
-        if (this.inserter.tableExists(this.tableName)) {
+        if (this.database.getTable(this.tableName) !== null) {
           throw `table ${this.tableName} already exists`;
         }
       } else {
@@ -262,25 +237,20 @@ export class TableCreate {
         undefined,
         "expected either ')' to end table definition or ',' for next column/constraint defintion"
       );
-      this.inserter.newTable(this.tableName, {
-        primaryKeys: this.primaryKeys,
-        columns: this.columns,
-        nameToken: tokens[tokenBeginIndex + 1],
-      });
+      this.createNewTable();
     } catch (e) {
       if (e instanceof ParseError) {
         throw e;
       } else if (typeof e === "string") {
-        throw new ParseError(e, this.readCurrentToken());
+        throw new ParseError(e, this.tokens.read());
       }
     }
-    return this.tokenIndex - tokenBeginIndex + 1;
   }
 
   private parseColumnOrConstraintDefinition() {
-    const token = this.readNextToken();
+    const token = this.tokens.consume();
     if (token.tokenId === Keyword.constraint) {
-      if (this.readNextToken().type === TokenType.identifier) {
+      if (this.tokens.consume().type === TokenType.identifier) {
         if (token.tokenId === Keyword.foreign) {
           this.parseForeignConstraint();
         } else if (token.tokenId === Keyword.primary) {
@@ -312,11 +282,16 @@ export class TableCreate {
     if (foreignPrimaryKeys.length !== foreignKeys.length) {
       throw `${foreignKeys.length} foreign keys cannot reference ${foreignPrimaryKeys.length} columns in table ${foreignTableName} does not match`;
     }
-    this.expectType(TokenType.closedParantheses);
-    this.inserter.newRelation({
+    if (new Set(foreignKeys).size < foreignKeys.length) {
+      throw "FOREIGN KEY cannot contain columns more than once";
+    }
+    if (new Set(foreignPrimaryKeys).size < foreignPrimaryKeys.length) {
+      throw "FOREIGN KEY reference cannot contain columns of other table more than once";
+    }
+    const lastToken = this.expectType(TokenType.closedParantheses);
+    this.newRelation({
       tokenStart: firstToken,
-      tokenEnd: this.readCurrentToken(),
-      tableFrom: this.tableName,
+      tokenEnd: lastToken,
       tableTo: foreignTableName,
       columnsFrom: foreignKeys,
       columnsTo: foreignPrimaryKeys,
@@ -335,6 +310,9 @@ export class TableCreate {
     }
     this.expectType(TokenType.openParantheses);
     this.primaryKeys = this.parseIdentifierList("column name");
+    if (new Set(this.primaryKeys).size < this.primaryKeys.length) {
+      throw "PRIMARY KEY cannot contain columns more than once";
+    }
     this.expectType(TokenType.closedParantheses);
     this.primaryKeyIsSet = true;
   }
@@ -350,7 +328,7 @@ export class TableCreate {
     if (this.columns.some((column) => column.name === name)) {
       throw "column with same name already exists";
     }
-    const typeToken = this.readNextToken();
+    const typeToken = this.tokens.consume();
     let typeName: DataType;
     if (typeToken.type === TokenType.identifier) {
       const maybeTypeName = typeMapping[typeToken.identifier];
@@ -362,41 +340,40 @@ export class TableCreate {
     } else {
       throw "column type expected";
     }
-    if (this.peekToken().type === TokenType.openParantheses) {
+    if (this.tokens.read().type === TokenType.openParantheses) {
       // for types such as varchar(30)
-      this.readNextToken();
+      this.tokens.consume();
       this.expectType(TokenType.number, undefined, "expected type length");
       this.expectType(TokenType.closedParantheses);
     }
     let nullable = true;
     let foreignKeySet = false;
     while (true) {
-      const token = this.peekToken();
+      const token = this.tokens.read();
       if (token.tokenId === Keyword.references) {
-        this.readNextToken();
+        this.tokens.consume();
         if (foreignKeySet) {
           throw "for a column to reference more than another column use a FOREIGN KEY constraint";
         }
         foreignKeySet = true;
         const tableName = this.expectIdentifier("table name");
         let explicitForeignKeyColumnName: string | null = null;
-        if (this.peekToken().type === TokenType.openParantheses) {
-          this.readNextToken();
+        if (this.tokens.read().type === TokenType.openParantheses) {
+          this.tokens.consume();
           explicitForeignKeyColumnName = this.expectIdentifier("column name");
           this.expectType(TokenType.closedParantheses);
         }
-        this.inserter.relations.push({
+        this.newRelation({
           tokenStart: token,
-          tokenEnd: this.readCurrentToken(),
+          tokenEnd: this.tokens.consume(),
           tableTo: tableName,
-          tableFrom: this.tableName,
           columnsFrom: [name],
           columnsTo: explicitForeignKeyColumnName
             ? [explicitForeignKeyColumnName]
             : null,
         });
       } else if (token.tokenId === Keyword.primary) {
-        this.readNextToken();
+        this.tokens.consume();
         this.expectKeyword(Keyword.key);
         if (this.primaryKeyIsSet) {
           throw (
@@ -412,7 +389,7 @@ export class TableCreate {
         // }
         this.primaryKeys = [name];
       } else if (token.tokenId === Keyword.not) {
-        this.readNextToken();
+        this.tokens.consume();
         this.expectKeyword(Keyword.null);
         if (!nullable) {
           throw "NOT NULL attribute can only be set once";

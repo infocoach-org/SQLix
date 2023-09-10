@@ -8,8 +8,8 @@ export enum DataType {
 export class Database {
   private tables: Map<string, Table> = new Map();
 
-  getTable(name: string): Table | undefined {
-    return this.tables.get(name);
+  getTable(name: string): Table | null {
+    return this.tables.get(name) ?? null;
   }
 
   setTable(name: string, table: Table) {
@@ -120,7 +120,7 @@ export type ColumnMetdata = BaseMetadata &
       }
   );
 
-interface Relation {
+export interface Relation {
   from: Table;
   fromColumnIds: number[];
   to: Table;
@@ -130,9 +130,11 @@ export interface Table {
   primaryColumnIds: number[];
   nameColumnIndexMapping: Record<string, number>;
   columnMetadata: ColumnMetdata[];
-  fromRelationsMetdata: Relation[]; // only from relations are in columns
-  toRelationsMetdata: Relation[];
-  rows: any[][]; // first index of row, then columns, then from relations
+  // foreign keys are stored in the other table, it stores the reference to this table
+  externalRelationsMetadata: Relation[]; // only external relations are in columns
+  internalRelationsMetadata: Relation[];
+  rows: any[][]; // first index of row, then columns, then external relations
+  //[index of row, ...column metadata, ...external relations]
 }
 
 interface DataSource {

@@ -9,9 +9,9 @@ import {
 } from "./tokenizer";
 
 interface TokenSource {
-  consumeToken(): TokenLocation;
-  readToken(): TokenLocation;
-  peekToken(): TokenLocation;
+  consume(): TokenLocation;
+  read(): TokenLocation;
+  peek(): TokenLocation;
   // errorOnCurrentToken(message: string): void; kommt in StatementParser
 }
 
@@ -20,13 +20,13 @@ class ListTokenSource implements TokenSource {
 
   constructor(private tokens: TokenLocation[]) {}
 
-  consumeToken(): TokenLocation {
+  consume(): TokenLocation {
     return this.tokens[this.tokenIndex++];
   }
-  readToken(): TokenLocation {
+  read(): TokenLocation {
     return this.tokens[this.tokenIndex];
   }
-  peekToken(): TokenLocation {
+  peek(): TokenLocation {
     return this.tokens[this.tokenIndex + 1];
   }
 
@@ -55,7 +55,7 @@ class TestOutputRecorder extends OutputRecorder {
   // }
 }
 
-abstract class BaseStatementExecutor {
+export abstract class BaseStatementExecutor {
   protected statementParserMap: {
     [T in Keyword]?: StatementParserManager<null | StatementContextState>;
   } /*Record<
@@ -91,16 +91,16 @@ abstract class BaseStatementExecutor {
     | { isError: false; result: OutputRecorder };
 }
 
-class SingleStatementExecutor extends BaseStatementExecutor {
+export class SingleStatementExecutor extends BaseStatementExecutor {
   protected parseAndExecute(
     tokens: TokenSource
   ):
     | { isError: true; error: ParseError }
     | { isError: false; result: OutputRecorder } {
-    while (tokens.readToken().type === TokenType.semicolon) {
-      tokens.consumeToken();
+    while (tokens.read().type === TokenType.semicolon) {
+      tokens.consume();
     }
-    const token = tokens.consumeToken();
+    const token = tokens.consume();
     if (token.type !== TokenType.keyword) {
       return {
         isError: true,
@@ -137,28 +137,25 @@ class SingleStatementExecutor extends BaseStatementExecutor {
     try {
       statmentParser.parseAndExecute(); // TokenSource musst be on eof or semicolon, no other statement allowed
       if (
-        tokens.readToken().type !== TokenType.semicolon &&
-        tokens.readToken().type !== TokenType.eof
+        tokens.read().type !== TokenType.semicolon &&
+        tokens.read().type !== TokenType.eof
       ) {
         return {
           isError: true,
           error: new ParseError(
             `${statmentParserManager.statementName.toUpperCase()} statement is already finished`,
-            tokens.readToken()
+            tokens.read()
           ),
         };
       }
-      tokens.consumeToken();
-      while (tokens.readToken().type === TokenType.semicolon) {
-        tokens.consumeToken();
+      tokens.consume();
+      while (tokens.read().type === TokenType.semicolon) {
+        tokens.consume();
       }
-      if (tokens.readToken().type !== TokenType.eof) {
+      if (tokens.read().type !== TokenType.eof) {
         return {
           isError: true,
-          error: new ParseError(
-            "only one statement allowed",
-            tokens.readToken()
-          ),
+          error: new ParseError("only one statement allowed", tokens.read()),
         };
       }
       contextState?.execute();
@@ -179,9 +176,9 @@ class SingleStatementExecutor extends BaseStatementExecutor {
   }
 }
 
-abstract class StatementExecutor extends BaseStatementExecutor {}
+export abstract class StatementExecutor extends BaseStatementExecutor {}
 
-abstract class StatementContextState {
+export abstract class StatementContextState {
   // insert and create have to use same context (as create can depend on eachother, but insert has to be after table)
   constructor(
     protected database: Database,
@@ -198,8 +195,11 @@ interface StatementContextStateConstructor<T extends StatementContextState> {
   ): StatementContextState;
 }
 
-abstract class StatementParserManager<T extends StatementContextState | null> {
+export abstract class StatementParserManager<
+  T extends StatementContextState | null
+> {
   public abstract statementName: string;
+  public abstract statementDescription: string;
   public abstract firstKeyword: Keyword;
   public abstract requiredStatementState: T extends StatementContextState
     ? StatementContextStateConstructor<T>
@@ -209,24 +209,90 @@ abstract class StatementParserManager<T extends StatementContextState | null> {
     : StatementParserConstructor;
 }
 
-abstract class StatementParser {
+export abstract class StatementParser {
   constructor(
-    private tokens: TokenSource,
-    private database: Database,
-    private outputRecorder: OutputRecorder
+    protected tokens: TokenSource,
+    protected database: Database,
+    protected outputRecorder: OutputRecorder
   ) {}
 
   public abstract parseAndExecute(): void;
+
+  protected currentTokenError(message: string): never {
+    throw new ParseError(message, this.tokens.read());
+  }
+
+  protected expectType(
+    type: TokenType,
+    afterErrorMessage?: string | undefined,
+    error?: string | undefined
+  ): TokenLocation {
+    const token = this.tokens.read();
+    if (token.type !== type) {
+      throw error ?? `${type} expected` + (afterErrorMessage ?? "");
+    }
+    return this.tokens.consume();
+  }
+  protected expectKeyword(
+    keyword: Keyword,
+    afterErrorMessage?: string | undefined,
+    error?: string | undefined
+  ): TokenLocation {
+    const token = this.tokens.consume();
+    if (token.tokenId !== keyword) {
+      throw (
+        error ??
+        `expected keyword ${keyword.toUpperCase()}${
+          afterErrorMessage ? " " + afterErrorMessage : ""
+        }`
+      );
+    }
+    return token;
+  }
+
+  protected expectIdentifier(identifierName: string): string {
+    const token = this.tokens.consume();
+    if (token.type !== TokenType.identifier) {
+      throw `expected ${identifierName}${
+        token.type === TokenType.keyword
+          ? `, keyword ${token.tokenId} cannot be used as a identifier`
+          : ""
+      }`;
+    }
+    return token.identifier;
+  }
+
+  protected parseMoreThanOne(parseFunction: () => void): void {
+    parseFunction = parseFunction.bind(this);
+    parseFunction();
+    while (this.tokens.read().type === TokenType.comma) {
+      this.tokens.consume();
+      parseFunction();
+    }
+  }
+
+  protected parseIdentifierList(identifierName: string): string[] {
+    const arr = [this.expectIdentifier(identifierName)];
+    while (this.tokens.read().type === TokenType.comma) {
+      this.tokens.consume();
+      const identifier = this.expectIdentifier(identifierName);
+      if (arr.includes(identifier)) {
+        throw `already mentioned ${identifierName} ${identifier}`;
+      }
+      arr.push(identifier);
+    }
+    return arr;
+  }
 }
 
-abstract class ContextStatementParser<
+export abstract class ContextStatementParser<
   T extends StatementContextState
 > extends StatementParser {
   constructor(
     tokens: TokenSource,
     database: Database,
     outputRecorder: OutputRecorder,
-    private context: T
+    protected context: T
   ) {
     super(tokens, database, outputRecorder);
   }

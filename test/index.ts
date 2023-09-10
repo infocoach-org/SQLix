@@ -1,53 +1,51 @@
-import { TableCreate, TableInserter } from "../src/create";
 import { Database } from "../src/database";
+import { SingleStatementExecutor } from "../src/nparser";
 import { ParseError } from "../src/parse_error";
-import { Tokenizer } from "../src/tokenizer";
-
-// const text = `SELECT a.b
-
-// ' as
-
-// '
-// `;
-// const tokenizer = new Tokenizer(text);
-
-// console.log(tokenizer.tokenize());
-
-// console.log(tokenizer.tokens);
-
-// while (true) {}
+import { CreateParserManager } from "../src/statements/add/create";
 
 const database = new Database();
 
-const inserter = new TableInserter(database);
+const parsers = [new CreateParserManager()];
 
-const createTable = new TableCreate(inserter);
+const executor = new SingleStatementExecutor(database, parsers);
 
-const text = `
+function exe(text: string) {
+  const res = executor.execute(text);
+
+  if (res.isError) {
+    if (res.error instanceof ParseError) {
+      console.log(text.substring(res.error.start, res.error.end));
+      console.error(res.error.message);
+    } else {
+      console.error(res);
+    }
+  } else {
+    database.printAllTableSchemas();
+  }
+}
+
+exe(
+  `
 CREATE TABLE a (
   a int not null,
   b int not null,
   abcdefghijklmnop boolean,
   asdfasdfadsfa boolean,
-  primary key (a,b)
+  primary key (a, b)
 );
-`;
+`
+);
 
-const tokenizer = new Tokenizer(text);
-const error = tokenizer.tokenize();
-if (error) console.log();
+exe(
+  `
+CREATE TABLE b (
+  a int not null,
+  b int not null,
+  abcdefghijklmnop boolean,
+  asdfasdfadsfa boolean,
+  foreign key (a, b) references a(a,b)
+);
+`
+);
 
-const tokens = tokenizer.tokens;
-try {
-  createTable.parse(tokens, 1);
-  inserter.insertTables();
-} catch (e) {
-  if (e instanceof ParseError) {
-    console.error(e.message);
-  } else {
-    console.error(e);
-  }
-}
-database.printTableSchema("a");
-
-while (true) {}
+while (1) 0;
