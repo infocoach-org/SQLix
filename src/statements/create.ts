@@ -23,7 +23,7 @@ interface RelationToInsert {
 }
 
 export class CreateParserManager extends StatementParserManager<null> {
-  statementName = "CREATE";
+  statementName = "create tables";
   statementDescription = "create new tables with references to other tables";
   firstKeyword = Keyword.create;
   requiredStatementState = null;
@@ -100,7 +100,7 @@ export class CreateParser extends StatementParser {
         );
       }
     }
-    const columns: ColumnMetdata[] = this.columns.map((column) => {
+    const columns: ColumnMetdata[] = this.columns.map((column, index) => {
       if (this.primaryKeys.includes(column.name)) {
         return {
           name: column.name,
@@ -108,6 +108,7 @@ export class CreateParser extends StatementParser {
           nullable: false,
           type: column.type,
           relationsTo: [],
+          columnIndex: index,
         };
       }
       return {
@@ -116,6 +117,7 @@ export class CreateParser extends StatementParser {
         nullable: column.nullable,
         type: column.type,
         relationsTo: [],
+        columnIndex: index,
       };
     });
     const columnsMapping: Record<string, number> = {};
@@ -125,6 +127,7 @@ export class CreateParser extends StatementParser {
     }
 
     const table: Table = {
+      name: this.tableName,
       rows: [],
       columnMetadata: columns,
       externalRelationsMetadata: [],

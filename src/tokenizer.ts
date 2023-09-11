@@ -29,7 +29,7 @@ export enum Keyword {
   betweeen = "betweeen",
   and = "and",
   or = "or",
-  _in = "in",
+  in = "in",
   like = "like",
   not = "not",
   offset = "offset",
@@ -39,6 +39,7 @@ export enum Keyword {
   desc = "desc",
   true = "true",
   false = "false",
+  default = "default",
 }
 
 export enum Operator {

@@ -11,7 +11,7 @@ const executor = new SingleStatementExecutor(database, parsers);
 
 function exe(text: string) {
   const res = executor.execute(text);
-
+  console.log("\n\n" + text);
   if (res.isError) {
     if (res.error instanceof ParseError) {
       console.log(text.substring(res.error.start, res.error.end));

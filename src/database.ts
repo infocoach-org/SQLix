@@ -35,8 +35,9 @@ export class Database {
   }
 
   printAllTableSchemas() {
-    for (const tableName of this.tables) {
-      this.printTableSchema(tableName[0]);
+    for (const tableEntry of this.tables) {
+      console.log(tableEntry);
+      this.printTableSchema(tableEntry[0]);
     }
   }
 }
@@ -55,7 +56,7 @@ interface DatabaseHydrator {}
 //   [rowForeignRelationsKey]: Record<string, Row[]>;
 // } & Record<symbol, string>;
 
-type Data = string | number | boolean | null;
+export type Data = string | number | boolean | null;
 
 // class Table {
 //   primaryKeyMetadata: string[];
@@ -69,11 +70,12 @@ type Data = string | number | boolean | null;
 //   rows: Row[] = [];
 // }
 
-interface BaseMetadata {
+interface BaseColumnMetadata {
   name: string;
   type: DataType;
   primary: boolean;
   relationsTo: Relation[];
+  columnIndex: number; // real column index is columnIndex + 1 // should not be stored
 }
 
 // type Metadata = BaseMetadata &
@@ -108,7 +110,7 @@ interface BaseMetadata {
 //   constructor();
 // }
 
-export type ColumnMetdata = BaseMetadata &
+export type ColumnMetdata = BaseColumnMetadata &
   (
     | {
         nullable: boolean;
@@ -127,6 +129,8 @@ export interface Relation {
 }
 
 export interface Table {
+  name: string;
+  // TOOD: proposal: primary column stores ColumnMetadata, nameColumnIndexMapping stores ColumnMetadata, ColumnMetadata stores index + name
   primaryColumnIds: number[];
   nameColumnIndexMapping: Record<string, number>;
   columnMetadata: ColumnMetdata[];
@@ -135,6 +139,8 @@ export interface Table {
   internalRelationsMetadata: Relation[];
   rows: any[][]; // first index of row, then columns, then external relations
   //[index of row, ...column metadata, ...external relations]
+  // index of row actually be exaclty the index
+  // external relations can each eather be an array of the other relation, or undefined (if no relations exist)
 }
 
 interface DataSource {

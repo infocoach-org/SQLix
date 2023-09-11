@@ -218,8 +218,18 @@ export abstract class StatementParser {
 
   public abstract parseAndExecute(): void;
 
+  private _lastExpectedToken: TokenLocation | undefined;
+
+  protected get lastExpectedToken(): TokenLocation {
+    return this._lastExpectedToken!;
+  }
+
   protected currentTokenError(message: string): never {
     throw new ParseError(message, this.tokens.read());
+  }
+
+  protected lastExpectedTokenError(message: string): never {
+    throw new ParseError(message, this.lastExpectedToken!);
   }
 
   protected expectType(
@@ -227,8 +237,8 @@ export abstract class StatementParser {
     afterErrorMessage?: string | undefined,
     error?: string | undefined
   ): TokenLocation {
-    const token = this.tokens.read();
-    if (token.type !== type) {
+    this._lastExpectedToken = this.tokens.read();
+    if (this._lastExpectedToken.type !== type) {
       throw error ?? `${type} expected` + (afterErrorMessage ?? "");
     }
     return this.tokens.consume();
@@ -238,8 +248,8 @@ export abstract class StatementParser {
     afterErrorMessage?: string | undefined,
     error?: string | undefined
   ): TokenLocation {
-    const token = this.tokens.consume();
-    if (token.tokenId !== keyword) {
+    this._lastExpectedToken = this.tokens.consume();
+    if (this._lastExpectedToken.tokenId !== keyword) {
       throw (
         error ??
         `expected keyword ${keyword.toUpperCase()}${
@@ -247,19 +257,19 @@ export abstract class StatementParser {
         }`
       );
     }
-    return token;
+    return this._lastExpectedToken;
   }
 
   protected expectIdentifier(identifierName: string): string {
-    const token = this.tokens.consume();
-    if (token.type !== TokenType.identifier) {
+    this._lastExpectedToken = this.tokens.consume();
+    if (this._lastExpectedToken.type !== TokenType.identifier) {
       throw `expected ${identifierName}${
-        token.type === TokenType.keyword
-          ? `, keyword ${token.tokenId} cannot be used as a identifier`
+        this._lastExpectedToken.type === TokenType.keyword
+          ? `, keyword ${this._lastExpectedToken.tokenId} cannot be used as a identifier`
           : ""
       }`;
     }
-    return token.identifier;
+    return this._lastExpectedToken.identifier;
   }
 
   protected parseMoreThanOne(parseFunction: () => void): void {
