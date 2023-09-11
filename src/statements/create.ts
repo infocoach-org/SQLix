@@ -7,6 +7,8 @@ import {
 import { ParseError } from "../parse_error";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
+// FOREIGN KEYS => foreign key(a,b) references a(a,b), cannot be a(b,a)
+
 interface ColumnToInsert {
   name: string;
   type: DataType;
@@ -59,6 +61,7 @@ export class CreateParser extends StatementParser {
       }
     }
 
+    // check if each column maps to same column in both relation
     for (
       let columnIndex = 0;
       columnIndex < a.columnsFrom.length;
@@ -162,6 +165,7 @@ export class CreateParser extends StatementParser {
           );
         }
       } else {
+        // check if columns given match exactly order of columns
         toColumns = rawRelation.columnsTo.map((columnName) => {
           const column = toTable.columnMetadata.find(
             (column) => column.name === columnName
@@ -186,6 +190,7 @@ export class CreateParser extends StatementParser {
           );
         }
       }
+      // compare columns, and check if from columns exist (is already checked if fromColumn are duplicated)
       for (let i = 0; i < toColumns.length; i++) {
         const fromColumnName = rawRelation.columnsFrom[i];
         const fromColumn = table.columnMetadata.find(
@@ -212,6 +217,7 @@ export class CreateParser extends StatementParser {
         ),
         from: table,
         to: toTable,
+        toColumnIds: toColumns.map((column) => column.columnIndex),
       };
       table.internalRelationsMetadata.push(relation);
       toTable.externalRelationsMetadata.push(relation);
@@ -281,15 +287,11 @@ export class CreateParser extends StatementParser {
     this.expectKeyword(Keyword.references);
     const foreignTableName = this.expectIdentifier("table name");
     this.expectType(TokenType.openParantheses);
-    const foreignPrimaryKeys = this.parseIdentifierList("column name");
-    if (foreignPrimaryKeys.length !== foreignKeys.length) {
-      throw `${foreignKeys.length} foreign keys cannot reference ${foreignPrimaryKeys.length} columns in table ${foreignTableName} does not match`;
-    }
+    const foreignPrimaryKeys = this.parseIdentifierList(
+      `${foreignTableName} column name`
+    );
     if (new Set(foreignKeys).size < foreignKeys.length) {
       throw "FOREIGN KEY cannot contain columns more than once";
-    }
-    if (new Set(foreignPrimaryKeys).size < foreignPrimaryKeys.length) {
-      throw "FOREIGN KEY reference cannot contain columns of other table more than once";
     }
     const lastToken = this.expectType(TokenType.closedParantheses);
     this.newRelation({

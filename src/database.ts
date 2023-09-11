@@ -126,6 +126,7 @@ export interface Relation {
   from: Table;
   fromColumnIds: number[];
   to: Table;
+  toColumnIds: number[];
 }
 
 export interface Table {
