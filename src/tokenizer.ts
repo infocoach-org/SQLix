@@ -308,6 +308,12 @@ class IdentifierTokenGenerator extends TokenGenerator {
   firstChar: boolean = true;
   finished = false;
 
+  get hasProblem(): boolean {
+    return (
+      this.startsWrong || this.nothingAfterQuote || this.endingQuoteExpected
+    );
+  }
+
   reset(): void {
     this.startsWrong = false;
     this.startingKey = null;
@@ -329,7 +335,9 @@ class IdentifierTokenGenerator extends TokenGenerator {
 
   feed(char: string | null): void {
     if (this.finished) {
-      this.status = TokenStatus.finished;
+      this.status = this.hasProblem
+        ? TokenStatus.invalid
+        : TokenStatus.finished;
       return;
     }
     if (this.startingKey === null) {
@@ -351,11 +359,13 @@ class IdentifierTokenGenerator extends TokenGenerator {
       }
     } else if (!this.validChar(char, false)) {
       if (this.startingKey === "") {
-        this.status = TokenStatus.finished;
+        this.status = this.hasProblem
+          ? TokenStatus.invalid
+          : TokenStatus.finished;
       } else if (char === this.startingKey) {
         this.finished = true;
       } else {
-        this.endingQuoteExpected = false;
+        this.endingQuoteExpected = true;
       }
     }
     this.firstChar = false;
@@ -372,7 +382,7 @@ class IdentifierTokenGenerator extends TokenGenerator {
     };
   }
 
-  public useForError = false;
+  public useForError = true;
 
   createErrorMessage(): string | null {
     if (this.startsWrong) return "identifier should start with a letter";
@@ -460,10 +470,10 @@ class NumericTokenGenerator extends TokenGenerator {
         }
         break;
       case NumericTokenGeneratorStatus.beforeDot:
-        if (!this.numericChar(char)) {
-          this.status = TokenStatus.invalid;
-        } else if (char === ".") {
+        if (char === ".") {
           this.genStatus = NumericTokenGeneratorStatus.onDot;
+        } else if (!this.numericChar(char)) {
+          this.status = TokenStatus.finished;
         }
         break;
       case NumericTokenGeneratorStatus.onDot:
@@ -522,7 +532,7 @@ export class Tokenizer {
   private validErrorGenerator: TokenGenerator | null = null;
   private finishedGenerator: TokenGenerator | null = null;
 
-  constructor(private text: string) {
+  constructor(text: string) {
     this.lowercaseText = text.toLowerCase();
   }
 
@@ -551,7 +561,7 @@ export class Tokenizer {
     }
   }
 
-  private createError(): TokenError {
+  private createError(): TokenError | null {
     if (this.lastValidGenerator?.useForError) {
       const message = this.lastValidGenerator?.createErrorMessage();
       return new TokenError({
@@ -595,13 +605,13 @@ export class Tokenizer {
   tokenize(): TokenError | null {
     for (
       this.charIndex = 0;
-      this.charIndex < this.lowercaseText.length;
+      this.charIndex <= this.lowercaseText.length;
       this.charIndex++
     ) {
       this.validGenerator = null;
       this.validErrorGenerator = null;
       this.finishedGenerator = null;
-      this.char = this.lowercaseText[this.charIndex];
+      this.char = this.lowercaseText[this.charIndex] ?? null; // for final character (represents EOF)
       for (let generator of this.generators) {
         this.feedGeneratorChar(generator);
       }
@@ -614,7 +624,9 @@ export class Tokenizer {
         }
         this.addFinishedToken();
         this.tokenBegin = this.charIndex;
-        this.charIndex--;
+        if (this.char !== null) {
+          this.charIndex--;
+        }
         this.resetGenerators();
       } else if (!this.validGenerator) {
         return this.createError();
