@@ -14,7 +14,7 @@
     "noImplicitAny": true, // could cause problem with svelte
     "strictPropertyInitialization": true,
     "outDir": "out",
-    "lib": ["ES2017", "DOM"],
+    "lib": ["ES5", "ES6", "DOM", "DOM.Iterable"],
     "target": "ES2017"
   }
 }
