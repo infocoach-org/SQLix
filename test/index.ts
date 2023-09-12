@@ -71,7 +71,7 @@ insert into b (a, b) values (1, 1);
   true
 );
 
-// does not exist
+// already exists
 exe(
   `
 insert into b (a, b) values (10, 10);

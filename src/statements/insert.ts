@@ -190,8 +190,8 @@ export class InsertParser extends StatementParser {
         this.table!.rows,
         this.rowsToInsert
       )) {
-        for (const columnId of this.table!.primaryColumnIds) {
-          if (row[columnId + 1] !== oldRow[columnId + 1]) {
+        for (const { columnIndex } of this.table!.primaryColumnIds) {
+          if (row[columnIndex + 1] !== oldRow[columnIndex + 1]) {
             continue oldRows;
           }
         }
@@ -235,9 +235,7 @@ export class InsertParser extends StatementParser {
       }
       if (columnName in this.table!.nameColumnIndexMapping) {
         this.columnsToInsert.push(
-          this.table!.columnMetadata[
-            this.table!.nameColumnIndexMapping[columnName]
-          ]
+          this.table!.nameColumnIndexMapping[columnName]
         );
       } else {
         this.lastExpectedTokenError(`column does not exist`);

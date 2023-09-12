@@ -123,10 +123,10 @@ export class CreateParser extends StatementParser {
         columnIndex: index,
       };
     });
-    const columnsMapping: Record<string, number> = {};
+    const columnsMapping: Record<string, ColumnMetdata> = {};
     for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
       const column = columns[columnIndex];
-      columnsMapping[column.name] = columnIndex;
+      columnsMapping[column.name] = column;
     }
 
     const table: Table = {
@@ -136,8 +136,9 @@ export class CreateParser extends StatementParser {
       externalRelationsMetadata: [],
       internalRelationsMetadata: [],
       nameColumnIndexMapping: columnsMapping,
-      primaryColumnIds: this.primaryKeys.map((primaryColumnName) =>
-        columns.findIndex((column) => column.name === primaryColumnName)
+      primaryColumnIds: this.primaryKeys.map(
+        (primaryColumnName) =>
+          columns.find((column) => column.name === primaryColumnName)!
       ),
     };
 
@@ -155,7 +156,7 @@ export class CreateParser extends StatementParser {
       let toColumns: ColumnMetdata[];
       if (rawRelation.columnsTo === null) {
         toColumns = toTable.primaryColumnIds.map(
-          (id) => toTable.columnMetadata[id]
+          ({ columnIndex: id }) => toTable.columnMetadata[id]
         );
         if (toColumns.length !== rawRelation.columnsFrom.length) {
           throw new ParseError(

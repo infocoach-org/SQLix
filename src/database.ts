@@ -131,9 +131,8 @@ export interface Relation {
 
 export interface Table {
   name: string;
-  // TOOD: proposal: primary column stores ColumnMetadata, nameColumnIndexMapping stores ColumnMetadata, ColumnMetadata stores index + name
-  primaryColumnIds: number[];
-  nameColumnIndexMapping: Record<string, number>;
+  primaryColumnIds: ColumnMetdata[];
+  nameColumnIndexMapping: Record<string, ColumnMetdata>;
   columnMetadata: ColumnMetdata[];
   // foreign keys are stored in the other table, it stores the reference to this table
   externalRelationsMetadata: Relation[]; // only external relations are in columns
