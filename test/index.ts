@@ -44,6 +44,7 @@ CREATE TABLE b (
   b int not null,
   abcdefghijklmnop boolean,
   asdfasdfadsfa boolean,
+  primary key(a, b),
   foreign key (a, b) references a(b,a)
 );
 `
@@ -75,6 +76,22 @@ insert into b (a, b) values (1, 1);
 exe(
   `
 insert into b (a, b) values (10, 10);
+`,
+  true
+);
+
+// has to insert in a, b, but only inserting in a
+exe(
+  `
+insert into b (a) values (100);
+`,
+  true
+);
+
+// column mismatch
+exe(
+  `
+insert into b (a, b) values (100);
 `,
   true
 );

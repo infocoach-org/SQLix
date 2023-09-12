@@ -18,6 +18,7 @@ export class InsertParser extends StatementParser {
   table: Table | null = null;
   rowsToInsert: any[][] = [];
   tableRowLength: number = NaN;
+  rowIndex: number = NaN;
   columnsToInsert: ColumnMetdata[] = [];
 
   public parseAndExecute(): void {
@@ -31,6 +32,7 @@ export class InsertParser extends StatementParser {
       1 +
       this.table!.columnMetadata.length +
       this.table!.externalRelationsMetadata.length;
+    this.rowIndex = this.table!.rows.length;
     if (this.table === null) {
       throw new ParseError(
         `cannot insert into table ${tableName}, does not exist`,
@@ -38,8 +40,7 @@ export class InsertParser extends StatementParser {
       );
     }
     if (this.tokens.read().type === TokenType.openParantheses) {
-      this.tokens.consume();
-      this.parseColumns();
+      this.parseColumns(this.tokens.consume());
     } else {
       this.columnsToInsert = this.table.columnMetadata;
     }
@@ -136,12 +137,12 @@ export class InsertParser extends StatementParser {
           const nextColumnName = this.columnsToInsert[i + 1].name;
           if (commaToken.type === TokenType.closedParantheses) {
             throw new ParseError(
-              `expected further value for column ${nextColumnName}`,
+              `could not insert rows, expected further value for column ${nextColumnName}, for each row ${this.columnsToInsert.length} column values have to be given`,
               commaToken
             );
           }
           throw new ParseError(
-            `comma expected to seperate next value for column ${nextColumnName}`,
+            `could not insert rows, comma expected to seperate next value for column ${nextColumnName}`,
             commaToken
           );
         }
@@ -177,7 +178,9 @@ export class InsertParser extends StatementParser {
           continue relations;
         }
         throw new ParseError(
-          `row does not fullfill constraint ${this.relationToString(relation)}`,
+          `could not insert rows, becuase this row does not fullfill constraint ${this.relationToString(
+            relation
+          )}`,
           beginToken,
           endToken
         );
@@ -196,14 +199,14 @@ export class InsertParser extends StatementParser {
           }
         }
         throw new ParseError(
-          "row already exists with identical primary key",
+          "could not insert rows, because row already exists with identical primary key",
           beginToken,
           endToken
         );
       }
     }
     // set row index
-    row[0] = this.table!.rows.length + this.rowsToInsert.length - 1;
+    row[0] = this.rowIndex++;
     this.rowsToInsert.push(row);
   }
 
@@ -223,8 +226,7 @@ export class InsertParser extends StatementParser {
     yield* b;
   }
 
-  private parseColumns() {
-    const beginToken = this.lastExpectedToken;
+  private parseColumns(beginToken: TokenLocation) {
     // TODO: replace with parseMoreThanOne, as insert into a () also allowed
     this.parseMoreThanOne(() => {
       const columnName = this.expectIdentifier("column name");
@@ -245,7 +247,7 @@ export class InsertParser extends StatementParser {
     for (const column of this.table!.columnMetadata) {
       if (!this.columnsToInsert.includes(column) && !column.nullable) {
         throw new ParseError(
-          `columns that should be inserted should contain column ${column}, as it is not nullable`,
+          `columns that should be inserted should contain column ${column.name}, as it is not nullable`,
           beginToken,
           this.lastExpectedToken
         );
