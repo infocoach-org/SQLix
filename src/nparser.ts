@@ -1,7 +1,8 @@
-import { DataType, Database } from "./database";
+import { Data, DataType, Database } from "./database";
 import { ParseError } from "./parse_error";
 import {
   Keyword,
+  Token,
   TokenError,
   TokenLocation,
   TokenType,
@@ -37,22 +38,32 @@ class ListTokenSource implements TokenSource {
 
 interface ResultSet {
   columnNames(): string[];
-  rowAvailable(): boolean;
-  nextRow(): DataType[];
+  getRow(): Data[];
+  nextRow(): boolean;
 }
 
-abstract class OutputRecorder {
-  // public abstract outputAvailable(): boolean;
-  // public abstract writeError(): void;
+interface OutputRecorder {
+  addComment(message: string): void;
+  addError(message: string, beginToken?: Token, endToken?: Token): void;
+  setResult(result: ResultSet): void;
 }
 
-class TestOutputRecorder extends OutputRecorder {
-  // public writeError(): void {
-  // throw new Error("Method not implemented.");
-  // }
-  // public outputAvailable(): boolean {
-  // return true;
-  // }
+interface OutputError {
+  message: string;
+  beginToken: TokenLocation;
+  endToken: TokenLocation;
+}
+
+interface OutputReplay {
+  getStatement(): {
+    manager: StatementParserManager<any>;
+    beginToken: TokenLocation;
+    endToken: TokenLocation;
+    comments: string[];
+    error: null | OutputError;
+    result: null | ResultSet;
+  };
+  nextStatement(): boolean;
 }
 
 export abstract class BaseStatementExecutor {
