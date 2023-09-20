@@ -1,9 +1,5 @@
 import { ColumnMetdata, DataType, Relation, Table } from "../database";
-import {
-  StatementParser,
-  StatementParserManager,
-  typeMapping,
-} from "../nparser";
+import { StatementHandler, StatementConfig, typeMapping } from "../nparser";
 import { ParseError } from "../parse_error";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
@@ -24,7 +20,7 @@ interface RelationToInsert {
   columnsTo: string[] | null;
 }
 
-export class CreateParserManager extends StatementParserManager<null> {
+export class CreateParserManager extends StatementConfig<null> {
   statementName = "create tables";
   statementDescription = "create new tables with references to other tables";
   firstKeyword = Keyword.create;
@@ -32,7 +28,7 @@ export class CreateParserManager extends StatementParserManager<null> {
   parser = CreateParser;
 }
 
-export class CreateParser extends StatementParser {
+export class CreateParser extends StatementHandler {
   private tableName: string = "";
   private primaryKeyIsSet = false;
   private primaryKeys: string[] = [];
@@ -226,7 +222,7 @@ export class CreateParser extends StatementParser {
     }
   }
 
-  public parseAndExecute(): void {
+  public parse(): void {
     try {
       this.expectKeyword(Keyword.table, "for CREATE TABLE statement");
       const identifierToken = this.tokens.consume();

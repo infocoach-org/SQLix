@@ -1,9 +1,9 @@
 import { ColumnMetdata, Data, DataType, Relation, Table } from "../database";
-import { StatementParser, StatementParserManager } from "../nparser";
+import { StatementHandler, StatementConfig } from "../nparser";
 import { ParseError } from "../parse_error";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
-export class InsertParserManager extends StatementParserManager<null> {
+export class InsertParserManager extends StatementConfig<null> {
   statementName = "insert rows";
   statementDescription = "create new tables with references to other tables";
   firstKeyword = Keyword.insert;
@@ -14,14 +14,14 @@ export class InsertParserManager extends StatementParserManager<null> {
 // currently all columns that have been given,
 // must be filled out, if no columns were given,
 // all columns musst be filled out
-export class InsertParser extends StatementParser {
+export class InsertParser extends StatementHandler {
   table: Table | null = null;
   rowsToInsert: any[][] = [];
   tableRowLength: number = NaN;
   rowIndex: number = NaN;
   columnsToInsert: ColumnMetdata[] = [];
 
-  public parseAndExecute(): void {
+  public parse(): void {
     this.expectKeyword(Keyword.into);
     const tableName = this.expectIdentifier("table name");
     const tableNameToken = this.lastExpectedToken as TokenLocation & {

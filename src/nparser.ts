@@ -1,13 +1,23 @@
 import { Data, DataType, Database } from "./database";
+import { SqlBaseError } from "./error";
 import { ParseError } from "./parse_error";
 import {
   Keyword,
-  Token,
   TokenError,
   TokenLocation,
   TokenType,
   Tokenizer,
 } from "./tokenizer";
+
+/// new concept:
+
+/// three modes for MultipleStatementRunner:
+
+// 1. executing error found while parsing => no execution at all (discrimination between errors? runtime vs compile time?)
+
+// 2. one executing error => rest of program does not run
+
+// 3. does not matter if program gives execution error (no discrimination)
 
 interface TokenSource {
   consume(): TokenLocation;
@@ -42,40 +52,14 @@ interface ResultSet {
   nextRow(): boolean;
 }
 
-interface OutputRecorder {
-  addComment(message: string): void;
-  addError(message: string, beginToken?: Token, endToken?: Token): void;
-  setResult(result: ResultSet): void;
-}
-
-interface OutputError {
-  message: string;
-  beginToken: TokenLocation;
-  endToken: TokenLocation;
-}
-
-interface OutputReplay {
-  getStatement(): {
-    manager: StatementParserManager<any>;
-    beginToken: TokenLocation;
-    endToken: TokenLocation;
-    comments: string[];
-    error: null | OutputError;
-    result: null | ResultSet;
-  };
-  nextStatement(): boolean;
-}
-
-export abstract class BaseStatementExecutor {
+export abstract class BaseSQLRunner {
   protected statementParserMap: {
-    [T in Keyword]?: StatementParserManager<null | StatementContextState>;
-  } /*Record<
-    Keyword,
-    StatementParserManager<null | StatementContextState>
-  >*/;
+    [T in Keyword]?: StatementConfig<StatementHandler>;
+  };
+
   constructor(
     protected database: Database,
-    statementParsers: StatementParserManager<null | StatementContextState>[]
+    statementParsers: StatementConfig<StatementHandler>[]
   ) {
     this.statementParserMap = {};
     for (const parser of statementParsers) {
@@ -91,19 +75,19 @@ export abstract class BaseStatementExecutor {
     const tokenizer = new Tokenizer(sql);
     const tokenError = tokenizer.tokenize();
     if (tokenError) return { isError: true, error: tokenError };
-    const res = this.parseAndExecute(new ListTokenSource(tokenizer.tokens));
+    const res = this.run(new ListTokenSource(tokenizer.tokens));
     return res;
   }
 
-  protected abstract parseAndExecute(
+  protected abstract run(
     tokens: TokenSource
   ):
     | { isError: true; error: ParseError }
     | { isError: false; result: OutputRecorder };
 }
 
-export class SingleStatementExecutor extends BaseStatementExecutor {
-  protected parseAndExecute(
+export class SingleStatementSQLRunner extends BaseSQLRunner {
+  protected run(
     tokens: TokenSource
   ):
     | { isError: true; error: ParseError }
@@ -130,7 +114,7 @@ export class SingleStatementExecutor extends BaseStatementExecutor {
     }
     const outputRecorder = new TestOutputRecorder();
     const statmentParserManager = this.statementParserMap[keyword]!;
-    let statmentParser: StatementParser;
+    let statmentParser: StatementHandler;
     let contextState: StatementContextState | undefined;
     if (statmentParserManager.requiredStatementState !== null) {
       contextState = new statmentParserManager.requiredStatementState(
@@ -138,15 +122,15 @@ export class SingleStatementExecutor extends BaseStatementExecutor {
         outputRecorder
       );
       statmentParser = new (
-        statmentParserManager as StatementParserManager<StatementContextState>
+        statmentParserManager as StatementConfig<StatementContextState>
       ).parser(tokens, this.database, contextState, outputRecorder);
     } else {
       statmentParser = new (
-        statmentParserManager as StatementParserManager<null>
+        statmentParserManager as StatementConfig<null>
       ).parser(tokens, this.database, outputRecorder);
     }
     try {
-      statmentParser.parseAndExecute(); // TokenSource musst be on eof or semicolon, no other statement allowed
+      statmentParser.parse(); // TokenSource musst be on eof or semicolon, no other statement allowed
       if (
         tokens.read().type !== TokenType.semicolon &&
         tokens.read().type !== TokenType.eof
@@ -187,153 +171,35 @@ export class SingleStatementExecutor extends BaseStatementExecutor {
   }
 }
 
-export abstract class StatementExecutor extends BaseStatementExecutor {}
+export abstract class MultipleStatementSQLRunner extends BaseSQLRunner {}
 
-export abstract class StatementContextState {
-  // insert and create have to use same context (as create can depend on eachother, but insert has to be after table)
-  constructor(
-    protected database: Database,
-    protected outputRecorder: OutputRecorder
-  ) {}
-
-  public abstract execute(): void;
-}
-
-interface StatementContextStateConstructor<T extends StatementContextState> {
-  new (
-    database: Database,
-    outputRecorder: OutputRecorder
-  ): StatementContextState;
-}
-
-export abstract class StatementParserManager<
-  T extends StatementContextState | null
-> {
+export abstract class StatementConfig<T extends StatementHandler> {
   public abstract statementName: string;
   public abstract statementDescription: string;
   public abstract firstKeyword: Keyword;
-  public abstract requiredStatementState: T extends StatementContextState
-    ? StatementContextStateConstructor<T>
-    : null;
-  public abstract parser: T extends StatementContextState
-    ? ContextStatementParserConstructor<T>
-    : StatementParserConstructor;
+  public abstract handlerConstructor: StatementHandlerConstructor<T>;
 }
 
-export abstract class StatementParser {
-  constructor(
-    protected tokens: TokenSource,
-    protected database: Database,
-    protected outputRecorder: OutputRecorder
-  ) {}
-
-  public abstract parseAndExecute(): void;
-
-  private _lastExpectedToken: TokenLocation | undefined;
-
-  protected get lastExpectedToken(): TokenLocation {
-    return this._lastExpectedToken!;
-  }
-
-  protected currentTokenError(message: string): never {
-    throw new ParseError(message, this.tokens.read());
-  }
-
-  protected lastExpectedTokenError(message: string): never {
-    throw new ParseError(message, this.lastExpectedToken!);
-  }
-
-  protected expectType(
-    type: TokenType,
-    afterErrorMessage?: string | undefined,
-    error?: string | undefined
-  ): TokenLocation {
-    this._lastExpectedToken = this.tokens.read();
-    if (this._lastExpectedToken.type !== type) {
-      throw error ?? `${type} expected` + (afterErrorMessage ?? "");
-    }
-    return this.tokens.consume();
-  }
-  protected expectKeyword(
-    keyword: Keyword,
-    afterErrorMessage?: string | undefined,
-    error?: string | undefined
-  ): TokenLocation {
-    this._lastExpectedToken = this.tokens.consume();
-    if (this._lastExpectedToken.tokenId !== keyword) {
-      throw (
-        error ??
-        `expected keyword ${keyword.toUpperCase()}${
-          afterErrorMessage ? " " + afterErrorMessage : ""
-        }`
-      );
-    }
-    return this._lastExpectedToken;
-  }
-
-  protected expectIdentifier(identifierName: string): string {
-    this._lastExpectedToken = this.tokens.consume();
-    if (this._lastExpectedToken.type !== TokenType.identifier) {
-      throw `expected ${identifierName}${
-        this._lastExpectedToken.type === TokenType.keyword
-          ? `, keyword ${this._lastExpectedToken.tokenId} cannot be used as a identifier`
-          : ""
-      }`;
-    }
-    return this._lastExpectedToken.identifier;
-  }
-
-  protected parseMoreThanOne(parseFunction: () => void): void {
-    parseFunction = parseFunction.bind(this);
-    parseFunction();
-    while (this.tokens.read().type === TokenType.comma) {
-      this.tokens.consume();
-      parseFunction();
-    }
-  }
-
-  protected parseIdentifierList(identifierName: string): string[] {
-    const arr = [this.expectIdentifier(identifierName)];
-    while (this.tokens.read().type === TokenType.comma) {
-      this.tokens.consume();
-      const identifier = this.expectIdentifier(identifierName);
-      if (arr.includes(identifier)) {
-        throw `already mentioned ${identifierName} ${identifier}`;
-      }
-      arr.push(identifier);
-    }
-    return arr;
-  }
+export interface StatementHandlerConstructor<T extends StatementHandler> {
+  new (tokens: TokenSource, database: Database): T;
 }
 
-export abstract class ContextStatementParser<
-  T extends StatementContextState
-> extends StatementParser {
-  constructor(
-    tokens: TokenSource,
-    database: Database,
-    outputRecorder: OutputRecorder,
-    protected context: T
-  ) {
-    super(tokens, database, outputRecorder);
-  }
+// soll extra klasse sein?
+export interface StatementExecutor {
+  execute(): SqlBaseError;
+  statement: StatementConfig<StatementHandler>;
+  start: TokenLocation;
+  end: TokenLocation;
 }
 
-interface StatementParserConstructor {
-  new (
-    tokens: TokenSource,
-    database: Database,
-    outputRecorder: OutputRecorder
-  ): StatementParser;
-}
+export type ExecutionResult = { error: null | ExecutionError };
 
-interface ContextStatementParserConstructor<T extends StatementContextState> {
-  new (
-    tokens: TokenSource,
-    database: Database,
-    contextState: StatementContextState,
-    outputRecorder: OutputRecorder
-  ): ContextStatementParser<T>;
+export abstract class StatementHandler {
+  constructor(protected tokens: TokenSource, protected database: Database) {}
+
+  public abstract parse(): void;
+
+  public abstract execute(): void; // should return error / meers/ sasdx^
 }
 
 export const typeMapping: Record<string, DataType | undefined> = {

@@ -1,5 +1,5 @@
 import { Database } from "../src/database";
-import { SingleStatementExecutor } from "../src/nparser";
+import { SingleStatementSQLRunner } from "../src/nparser";
 import { ParseError } from "../src/parse_error";
 import { CreateParserManager } from "../src/statements/create";
 import { InsertParserManager } from "../src/statements/insert";
@@ -8,7 +8,7 @@ const database = new Database();
 
 const parsers = [new CreateParserManager(), new InsertParserManager()];
 
-const executor = new SingleStatementExecutor(database, parsers);
+const executor = new SingleStatementSQLRunner(database, parsers);
 
 function exe(text: string, print: boolean = false) {
   const res = executor.execute(text);

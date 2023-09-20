@@ -1,3 +1,5 @@
+import { TokenError, TokenErrorType } from "./error";
+
 export enum Keyword {
   create = "create",
   select = "select",
@@ -95,25 +97,6 @@ enum TokenStatus {
   invalid,
   finished,
 }
-
-enum TokenErrorType {
-  characterNotUnderstood,
-  notValidToken,
-}
-
-export class TokenError {
-  constructor(public information: TokenErrorInformation) {}
-}
-
-export type TokenErrorInformation =
-  | { type: TokenErrorType.characterNotUnderstood; character: number }
-  | {
-      type: TokenErrorType.notValidToken;
-      tokenType: TokenType;
-      tokenBegin: number;
-      tokenErrorCharacter: number;
-      customErrorString: string | null;
-    };
 
 abstract class TokenGenerator {
   public status: TokenStatus = TokenStatus.valid;
