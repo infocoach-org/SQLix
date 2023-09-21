@@ -25,7 +25,7 @@ export abstract class BaseSQLRunner {
 
   constructor(
     protected database: Database,
-    statementParsers: StatementConfig<StatementParser>[]
+    private statementParsers: StatementConfig<StatementParser>[]
   ) {
     this.statementParserMap = {};
     for (const parser of statementParsers) {
@@ -57,20 +57,25 @@ export abstract class StatementConfig<T extends StatementParser> {
   public abstract statementName: string;
   public abstract statementDescription: string;
   public abstract firstKeyword: Keyword;
-  public abstract parserConstructor: StatementParserConstructor<T>;
-  public abstract executionFunction: (parser: T) => 
+  public abstract parserFactory: StatementParserFactory<T>;
+  public abstract executorFactory: StatementExecutorFactory<T>;
 }
 
-export interface StatementParserConstructor<T extends StatementParser> {
-  new (tokens: TokenSource, database: Database): T;
-}
+export type StatementParserFactory<T extends StatementParser> = 
+  (tokens: TokenSource, database: Database) => T;
+
+
+export type StatementExecutorFactory<T extends StatementParser> =
+  (database: Database, ) => StatementExecutor<T>;
 
 // soll extra klasse sein?
-export interface StatementExecutor {
-  execute(): SqlBaseError;
-  statement: StatementConfig<StatementParser>;
-  start: TokenLocation;
-  end: TokenLocation;
+export abstract class StatementExecutor<T extends StatementParser> {
+  public abstract execute(): void;
+  public error: ExecutionError | null = null
+  public informationStrings: string[] | []
+  public statement: StatementConfig<StatementParser>;
+  public start: TokenLocation;
+  public end: TokenLocation;
 }
 
 export abstract class StatementParser {
