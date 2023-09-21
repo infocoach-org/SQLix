@@ -1,5 +1,5 @@
 import { ColumnMetdata, DataType, Relation, Table } from "../database";
-import { StatementHandler, StatementConfig, typeMapping } from "../nparser";
+import { StatementParser, StatementConfig, typeMapping } from "../nparser";
 import { ParseError } from "../parse_error";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
@@ -11,6 +11,6 @@ export class SelectParserManager extends StatementConfig<null> {
   parser = SelectParser;
 }
 
-export class SelectParser extends StatementHandler {
+export class SelectParser extends StatementParser {
   public parse(): void {}
 }

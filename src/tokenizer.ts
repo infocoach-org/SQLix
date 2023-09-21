@@ -624,3 +624,30 @@ export class Tokenizer {
     return null;
   }
 }
+
+export interface TokenSource {
+  consume(): TokenLocation;
+  read(): TokenLocation;
+  peek(): TokenLocation;
+  // errorOnCurrentToken(message: string): void; kommt in StatementParser
+}
+
+class ListTokenSource implements TokenSource {
+  private tokenIndex = 0;
+
+  constructor(private tokens: TokenLocation[]) {}
+
+  consume(): TokenLocation {
+    return this.tokens[this.tokenIndex++];
+  }
+  read(): TokenLocation {
+    return this.tokens[this.tokenIndex];
+  }
+  peek(): TokenLocation {
+    return this.tokens[this.tokenIndex + 1];
+  }
+
+  // errorOnCurrentToken(message: string): void {
+  // throw new Error("Method not implemented.");
+  // }
+}

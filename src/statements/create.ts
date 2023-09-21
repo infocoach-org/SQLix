@@ -1,9 +1,19 @@
 import { ColumnMetdata, DataType, Relation, Table } from "../database";
-import { StatementHandler, StatementConfig, typeMapping } from "../nparser";
-import { ParseError } from "../parse_error";
+import { StatementParser, StatementConfig, typeMapping } from "../nparser";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
 // FOREIGN KEYS => foreign key(a,b) references a(a,b), cannot be a(b,a)
+
+export const typeMapping: Record<string, DataType | undefined> = {
+  int: DataType.int,
+  integer: DataType.int,
+  float: DataType.float,
+  real: DataType.float,
+  number: DataType.float,
+  text: DataType.text,
+  varchar: DataType.text,
+  boolean: DataType.boolean,
+};
 
 interface ColumnToInsert {
   name: string;
@@ -28,7 +38,7 @@ export class CreateParserManager extends StatementConfig<null> {
   parser = CreateParser;
 }
 
-export class CreateParser extends StatementHandler {
+export class CreateParser extends StatementParser {
   private tableName: string = "";
   private primaryKeyIsSet = false;
   private primaryKeys: string[] = [];

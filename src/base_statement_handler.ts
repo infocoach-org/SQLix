@@ -1,8 +1,8 @@
 import { ParseError } from "./error";
-import { StatementHandler } from "./nparser";
+import { StatementParser } from "./nparser";
 import { Keyword, TokenLocation, TokenType } from "./tokenizer";
 
-export abstract class BaseStatementHandler extends StatementHandler {
+export abstract class BaseStatementHandler extends StatementParser {
   private _lastExpectedToken: TokenLocation | undefined;
 
   protected get lastExpectedToken(): TokenLocation {

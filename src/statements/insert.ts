@@ -1,5 +1,5 @@
 import { ColumnMetdata, Data, DataType, Relation, Table } from "../database";
-import { StatementHandler, StatementConfig } from "../nparser";
+import { StatementParser, StatementConfig } from "../nparser";
 import { ParseError } from "../parse_error";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
@@ -14,7 +14,7 @@ export class InsertParserManager extends StatementConfig<null> {
 // currently all columns that have been given,
 // must be filled out, if no columns were given,
 // all columns musst be filled out
-export class InsertParser extends StatementHandler {
+export class InsertParser extends StatementParser {
   table: Table | null = null;
   rowsToInsert: any[][] = [];
   tableRowLength: number = NaN;
