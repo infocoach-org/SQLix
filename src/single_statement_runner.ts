@@ -1,84 +1,116 @@
+import { Database } from "./database";
+import { ParseError } from "./error";
+import {
+  BaseSQLRunner,
+  StatementConfig,
+  StatementExecutionResult,
+  StatementParser,
+} from "./nparser";
+import { Keyword, TokenSource, TokenType } from "./tokenizer";
+
+type SingleStatementSQLRunnerConfig = {
+  atLeastOneStatement: boolean;
+};
+
 export class SingleStatementSQLRunner extends BaseSQLRunner {
-  protected run(
-    tokens: TokenSource
-  ):
-    | { isError: true; error: ParseError }
-    | { isError: false; result: OutputRecorder } {
+  private config: SingleStatementSQLRunnerConfig;
+
+  constructor(
+    database: Database,
+    statementParsers: StatementConfig<StatementParser>[],
+    config?: { atLeastOneStatement?: boolean }
+  ) {
+    config ??= {};
+    config.atLeastOneStatement ??= false;
+    super(database, statementParsers);
+    this.config = config as SingleStatementSQLRunnerConfig;
+  }
+
+  protected run(tokens: TokenSource):
+    | {
+        error: ParseError;
+      }
+    | { error: null; results: Iterable<StatementExecutionResult> } {
     while (tokens.read().type === TokenType.semicolon) {
       tokens.consume();
     }
-    const token = tokens.consume();
-    if (token.type !== TokenType.keyword) {
+    const startToken = tokens.consume();
+    if (startToken.type === TokenType.eof) {
+      if (this.config.atLeastOneStatement) {
+        return {
+          error: new ParseError(
+            "at least one statement expected",
+            tokens.tryToGetTokenAtIndex(0) ?? startToken,
+            tokens.tryToGetLastToken() ?? startToken
+          ),
+        };
+      } else {
+        return { error: null, results: [] };
+      }
+    }
+    if (startToken.type !== TokenType.keyword) {
       return {
-        isError: true,
-        error: new ParseError("statement has to begin with a keyword", token),
+        error: new ParseError("statements begin with a keyword", startToken),
       };
     }
-    const keyword = token.tokenId as Keyword;
+    const keyword = startToken.tokenId as Keyword;
     if (!(keyword in this.statementParserMap)) {
       return {
-        isError: true,
         error: new ParseError(
           `no statement begins with the keyword ${keyword}`,
-          token
+          startToken
         ),
       };
     }
-    const outputRecorder = new TestOutputRecorder();
     const statmentParserManager = this.statementParserMap[keyword]!;
-    let statmentParser: StatementHandler;
-    let contextState: StatementContextState | undefined;
-    if (statmentParserManager.requiredStatementState !== null) {
-      contextState = new statmentParserManager.requiredStatementState(
-        this.database,
-        outputRecorder
-      );
-      statmentParser = new (
-        statmentParserManager as StatementConfig<StatementContextState>
-      ).parser(tokens, this.database, contextState, outputRecorder);
-    } else {
-      statmentParser = new (
-        statmentParserManager as StatementConfig<null>
-      ).parser(tokens, this.database, outputRecorder);
-    }
+    const statementParser = statmentParserManager.parserFactory(
+      tokens,
+      this.database
+    );
     try {
-      statmentParser.parse(); // TokenSource musst be on eof or semicolon, no other statement allowed
-      if (
-        tokens.read().type !== TokenType.semicolon &&
-        tokens.read().type !== TokenType.eof
-      ) {
-        return {
-          isError: true,
-          error: new ParseError(
-            `${statmentParserManager.statementName.toUpperCase()} statement is already finished`,
-            tokens.read()
-          ),
-        };
-      }
-      tokens.consume();
-      while (tokens.read().type === TokenType.semicolon) {
-        tokens.consume();
-      }
-      if (tokens.read().type !== TokenType.eof) {
-        return {
-          isError: true,
-          error: new ParseError("only one statement allowed", tokens.read()),
-        };
-      }
-      contextState?.execute();
-      return {
-        isError: false,
-        result: outputRecorder,
-      };
+      statementParser.parse(); // TokenSource musst be on eof or semicolon, no other statement allowed
     } catch (e) {
       if (e instanceof ParseError) {
         return {
-          isError: true,
           error: e,
         };
       } else {
         throw e;
       }
     }
+    const endToken = tokens.before() ?? startToken;
+    if (
+      tokens.read().type !== TokenType.semicolon &&
+      tokens.read().type !== TokenType.eof
+    ) {
+      return {
+        error: new ParseError(
+          `${statmentParserManager.statementName.toUpperCase()} statement is already finished, unexpected token`,
+          tokens.read()
+        ),
+      };
+    }
+    tokens.consume();
+    while (tokens.read().type === TokenType.semicolon) {
+      tokens.consume();
+    }
+    if (tokens.read().type !== TokenType.eof) {
+      return {
+        error: new ParseError("only one statement allowed", tokens.read()),
+      };
+    }
+    const executor = statmentParserManager.executorFactory(
+      this.database,
+      this.statementParsers,
+      statementParser,
+      statmentParserManager,
+      startToken,
+      endToken
+    );
+    executor.execute();
+    if (executor.error) {
+      return { error: executor.error };
+    }
+    return { results: [executor], error: null };
   }
 }

@@ -90,6 +90,7 @@ export type TokenLocation = {
   type: TokenType;
   begin: number;
   end: number;
+  index: number;
 } & Token;
 
 enum TokenStatus {
@@ -569,10 +570,11 @@ export class Tokenizer {
       this.charIndex
     );
     if (token) {
-      const tokenLocation = {
+      const tokenLocation: TokenLocation = {
         ...token,
         begin: this.tokenBegin,
         end: this.charIndex,
+        index: this.tokens.length,
       };
       this.tokens.push(tokenLocation);
     }
@@ -620,6 +622,7 @@ export class Tokenizer {
       type: TokenType.eof,
       begin: this.charIndex,
       end: this.charIndex + 1,
+      index: this.tokens.length,
     });
     return null;
   }
@@ -629,10 +632,13 @@ export interface TokenSource {
   consume(): TokenLocation;
   read(): TokenLocation;
   peek(): TokenLocation;
+  before(): TokenLocation | undefined;
+  tryToGetTokenAtIndex(index: number): TokenLocation | undefined;
+  tryToGetLastToken(): TokenLocation | undefined;
   // errorOnCurrentToken(message: string): void; kommt in StatementParser
 }
 
-class ListTokenSource implements TokenSource {
+export class ListTokenSource implements TokenSource {
   private tokenIndex = 0;
 
   constructor(private tokens: TokenLocation[]) {}
@@ -647,7 +653,15 @@ class ListTokenSource implements TokenSource {
     return this.tokens[this.tokenIndex + 1];
   }
 
-  // errorOnCurrentToken(message: string): void {
-  // throw new Error("Method not implemented.");
-  // }
+  before(): TokenLocation | undefined {
+    return this.tokens[this.tokenIndex - 1];
+  }
+
+  tryToGetTokenAtIndex(index: number): TokenLocation | undefined {
+    return this.tokens[index];
+  }
+
+  tryToGetLastToken(): TokenLocation | undefined {
+    return this.tokens[this.tokens.length - 1];
+  }
 }

@@ -1,6 +1,12 @@
-import { Data, DataType, Database } from "./database";
-import { ExecutionError, ParseError, SqlBaseError } from "./error";
-import { Keyword, TokenLocation, TokenSource, TokenType, Tokenizer } from "./tokenizer";
+import { Data, Database } from "./database";
+import { ExecutionError, ParseError, SqlBaseError, TokenError } from "./error";
+import {
+  Keyword,
+  ListTokenSource,
+  TokenLocation,
+  TokenSource,
+  Tokenizer,
+} from "./tokenizer";
 
 /// new concept:
 
@@ -25,7 +31,7 @@ export abstract class BaseSQLRunner {
 
   constructor(
     protected database: Database,
-    private statementParsers: StatementConfig<StatementParser>[]
+    protected statementParsers: StatementConfig<StatementParser>[]
   ) {
     this.statementParserMap = {};
     for (const parser of statementParsers) {
@@ -36,46 +42,75 @@ export abstract class BaseSQLRunner {
   execute(
     sql: string
   ):
-    | { isError: true; error: TokenError | ParseError }
-    | { isError: false; result: OutputRecorder } {
+    | { error: TokenError | ParseError }
+    | { error: null; results: Iterable<StatementExecutionResult> } {
     const tokenizer = new Tokenizer(sql);
     const tokenError = tokenizer.tokenize();
-    if (tokenError) return { isError: true, error: tokenError };
-    const res = this.run(new ListTokenSource(tokenizer.tokens));
-    return res;
+    if (tokenError) return { error: tokenError };
+    return this.run(new ListTokenSource(tokenizer.tokens));
   }
 
-  protected abstract run(tokens: TokenSource): {
-    error: ParseError
-
-  } | {error: null | };
+  protected abstract run(tokens: TokenSource):
+    | {
+        error: ParseError;
+      }
+    | { error: null; results: Iterable<StatementExecutionResult> };
 }
 
 export abstract class MultipleStatementSQLRunner extends BaseSQLRunner {}
 
-export abstract class StatementConfig<T extends StatementParser> {
-  public abstract statementName: string;
-  public abstract statementDescription: string;
-  public abstract firstKeyword: Keyword;
-  public abstract parserFactory: StatementParserFactory<T>;
-  public abstract executorFactory: StatementExecutorFactory<T>;
+export interface StatementConfig<T extends StatementParser> {
+  readonly statementName: string;
+  readonly statementDescription: string;
+  readonly firstKeyword: Keyword;
+  readonly parserFactory: StatementParserFactory<T>;
+  readonly executorFactory: StatementExecutorFactory<T>;
 }
 
-export type StatementParserFactory<T extends StatementParser> = 
-  (tokens: TokenSource, database: Database) => T;
+export type StatementParserFactory<T extends StatementParser> = (
+  tokens: TokenSource,
+  database: Database
+) => T;
 
+export type StatementExecutorFactory<T extends StatementParser> = (
+  database: Database,
+  runnerConfig: StatementConfig<StatementParser>[],
+  parser: T,
+  statementInformation: StatementConfig<StatementParser>,
+  start: TokenLocation,
+  end: TokenLocation
+) => StatementExecutor<T>;
 
-export type StatementExecutorFactory<T extends StatementParser> =
-  (database: Database, ) => StatementExecutor<T>;
+export interface StatementExecutionResult {
+  // TODO: should be added?
+  readonly database: Database;
+  readonly runnerConfig: StatementConfig<StatementParser>[];
+  readonly error: ExecutionError | null;
+  readonly informationStrings: string[] | [];
+  readonly statementInformation: StatementConfig<StatementParser>;
+  readonly result: ResultSet | null;
+  readonly start: TokenLocation;
+  readonly end: TokenLocation;
+}
 
 // soll extra klasse sein?
-export abstract class StatementExecutor<T extends StatementParser> {
+export abstract class StatementExecutor<T extends StatementParser>
+  implements StatementExecutionResult
+{
+  public error: ExecutionError | null = null;
+  public result: ResultSet | null = null;
+  public informationStrings: string[] = [];
+
+  constructor(
+    public database: Database,
+    public runnerConfig: StatementConfig<StatementParser>[],
+    public parser: T,
+    public statementInformation: StatementConfig<StatementParser>,
+    public start: TokenLocation,
+    public end: TokenLocation
+  ) {}
+
   public abstract execute(): void;
-  public error: ExecutionError | null = null
-  public informationStrings: string[] | []
-  public statement: StatementConfig<StatementParser>;
-  public start: TokenLocation;
-  public end: TokenLocation;
 }
 
 export abstract class StatementParser {
