@@ -267,16 +267,16 @@ class InsertParser
   }
 }
 
-class InsertExecutor extends StatementExecutor<InsertParser> {
+class InsertExecutor extends StatementExecutor<InsertData> {
   public execute(): void {
     throw new Error("Method not implemented.");
   }
 }
 
-export const insertParserConfig: StatementConfig<InsertParser> = {
-  statementName: "insert rows",
-  statementDescription: "create new tables with references to other tables",
-  firstKeyword: Keyword.insert,
-  parserConstructor: InsertParser,
-  executorConstructor: InsertExecutor,
+export const insertConfig = {
+  name: "insert rows",
+  description: "create new tables with references to other tables",
+  begin: Keyword.insert,
+  parser: InsertParser,
+  executor: InsertExecutor,
 };

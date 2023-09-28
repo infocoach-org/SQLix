@@ -26,14 +26,12 @@ interface ResultSet {
 
 export abstract class BaseSQLRunner {
   protected statementParserMap: {
-    [T in Keyword]?: StatementConfig<StatementParserType<StatementData>>;
+    [T in Keyword]?: StatementConfig<StatementData>;
   };
 
   constructor(
     protected database: Database,
-    protected statementParsers: StatementConfig<
-      StatementParserType<StatementData>
-    >[]
+    protected statementParsers: StatementConfig<StatementData>[]
   ) {
     this.statementParserMap = {};
     for (const parser of statementParsers) {
@@ -127,8 +125,6 @@ export abstract class StatementExecutor<T extends StatementData>
 export type StatementParserType<T extends StatementData> = StatementParser & {
   [Key in keyof T]: T[Key] | undefined;
 };
-
-export type Optional<T> = T | undefined;
 
 export abstract class StatementParser {
   constructor(protected tokens: TokenSource, protected database: Database) {}

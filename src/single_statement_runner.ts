@@ -18,7 +18,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
 
   constructor(
     database: Database,
-    statementParsers: StatementConfig<StatementParser>[],
+    statementParsers: StatementConfig<StatementData>[],
     config?: { atLeastOneStatement?: boolean }
   ) {
     config ??= {};
@@ -66,8 +66,8 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
         ),
       };
     }
-    const statmentParserManager = this.statementParserMap[keyword]!;
-    const statementParser = new statmentParserManager.parserConstructor(
+    const statementConfig = this.statementParserMap[keyword]!;
+    const statementParser = new statementConfig.parserConstructor(
       tokens,
       this.database
     );
@@ -89,7 +89,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
     ) {
       return {
         error: new ParseError(
-          `${statmentParserManager.statementName.toUpperCase()} statement is already finished, unexpected token`,
+          `${statementConfig.statementName.toUpperCase()} statement is already finished, unexpected token`,
           tokens.read()
         ),
       };
@@ -103,11 +103,11 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
         error: new ParseError("only one statement allowed", tokens.read()),
       };
     }
-    const executor = new statmentParserManager.executorConstructor(
+    const executor = new statementConfig.executorConstructor(
       this.database,
-      this.statementParsers,
+      this.statementParsers as any,
       statementParser,
-      statmentParserManager,
+      statementConfig as any,
       startToken,
       endToken
     );
