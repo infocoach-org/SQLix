@@ -63,23 +63,24 @@ export interface StatementConfig<T extends StatementParser> {
   readonly statementName: string;
   readonly statementDescription: string;
   readonly firstKeyword: Keyword;
-  readonly parserFactory: StatementParserFactory<T>;
+  readonly parserConstructor: StatementParserConstructor<T>;
   readonly executorFactory: StatementExecutorFactory<T>;
 }
 
-export type StatementParserFactory<T extends StatementParser> = (
-  tokens: TokenSource,
-  database: Database
-) => T;
+export interface StatementParserConstructor<T extends StatementParser> {
+  new (tokens: TokenSource, database: Database): T;
+}
 
-export type StatementExecutorFactory<T extends StatementParser> = (
-  database: Database,
-  runnerConfig: StatementConfig<StatementParser>[],
-  parser: T,
-  statementInformation: StatementConfig<StatementParser>,
-  start: TokenLocation,
-  end: TokenLocation
-) => StatementExecutor<T>;
+export interface StatementExecutorFactory<T extends StatementParser> {
+  new (
+    database: Database,
+    runnerConfig: StatementConfig<StatementParser>[],
+    parser: T,
+    statementInformation: StatementConfig<StatementParser>,
+    start: TokenLocation,
+    end: TokenLocation
+  ): StatementExecutor<T>;
+}
 
 export interface StatementExecutionResult {
   // TODO: should be added?
@@ -117,6 +118,4 @@ export abstract class StatementParser {
   constructor(protected tokens: TokenSource, protected database: Database) {}
 
   public abstract parse(): void;
-
-  public abstract execute(): void; // should return error / meers/ sasdx^
 }

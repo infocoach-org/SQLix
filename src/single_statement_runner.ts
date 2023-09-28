@@ -63,7 +63,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
       };
     }
     const statmentParserManager = this.statementParserMap[keyword]!;
-    const statementParser = statmentParserManager.parserFactory(
+    const statementParser = statmentParserManager.parserConstructor(
       tokens,
       this.database
     );

@@ -1,20 +1,13 @@
+import { BaseStatementParser } from "../base_statement_parser";
 import { ColumnMetdata, Data, DataType, Relation, Table } from "../database";
-import { StatementParser, StatementConfig } from "../nparser";
-import { ParseError } from "../parse_error";
+import { ParseError } from "../error";
+import { StatementConfig, StatementExecutor } from "../nparser";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
-
-export class InsertParserManager extends StatementConfig<null> {
-  statementName = "insert rows";
-  statementDescription = "create new tables with references to other tables";
-  firstKeyword = Keyword.insert;
-  requiredStatementState = null;
-  parser = InsertParser;
-}
 
 // currently all columns that have been given,
 // must be filled out, if no columns were given,
 // all columns musst be filled out
-export class InsertParser extends StatementParser {
+class InsertParser extends BaseStatementParser {
   table: Table | null = null;
   rowsToInsert: any[][] = [];
   tableRowLength: number = NaN;
@@ -255,3 +248,17 @@ export class InsertParser extends StatementParser {
     }
   }
 }
+
+class InsertExecutor extends StatementExecutor<InsertParser> {
+  public execute(): void {
+    throw new Error("Method not implemented.");
+  }
+}
+
+export const insertParserConfig: StatementConfig<InsertParser> = {
+  statementName: "insert rows",
+  statementDescription: "create new tables with references to other tables",
+  firstKeyword: Keyword.insert,
+  parserConstructor: InsertParser,
+  executorFactory: InsertExecutor,
+};
