@@ -3,6 +3,7 @@ import { ParseError } from "./error";
 import {
   BaseSQLRunner,
   StatementConfig,
+  StatementData,
   StatementExecutionResult,
   StatementParser,
 } from "./nparser";
@@ -30,7 +31,10 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
     | {
         error: ParseError;
       }
-    | { error: null; results: Iterable<StatementExecutionResult> } {
+    | {
+        error: null;
+        results: Iterable<StatementExecutionResult<StatementData>>;
+      } {
     while (tokens.read().type === TokenType.semicolon) {
       tokens.consume();
     }
@@ -63,7 +67,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
       };
     }
     const statmentParserManager = this.statementParserMap[keyword]!;
-    const statementParser = statmentParserManager.parserConstructor(
+    const statementParser = new statmentParserManager.parserConstructor(
       tokens,
       this.database
     );
@@ -99,7 +103,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
         error: new ParseError("only one statement allowed", tokens.read()),
       };
     }
-    const executor = statmentParserManager.executorFactory(
+    const executor = new statmentParserManager.executorConstructor(
       this.database,
       this.statementParsers,
       statementParser,

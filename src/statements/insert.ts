@@ -1,14 +1,30 @@
 import { BaseStatementParser } from "../base_statement_parser";
 import { ColumnMetdata, Data, DataType, Relation, Table } from "../database";
 import { ParseError } from "../error";
-import { StatementConfig, StatementExecutor } from "../nparser";
+import {
+  StatementConfig,
+  StatementData,
+  StatementExecutor,
+  StatementParserType,
+} from "../nparser";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
+
+interface InsertData extends StatementData {
+  table: Table;
+  rowsToInsert: any[][];
+  tableRowLength: number;
+  rowIndex: number;
+  columnsToInsert: ColumnMetdata[];
+}
 
 // currently all columns that have been given,
 // must be filled out, if no columns were given,
 // all columns musst be filled out
-class InsertParser extends BaseStatementParser {
-  table: Table | null = null;
+class InsertParser
+  extends BaseStatementParser
+  implements StatementParserType<InsertData>
+{
+  table: Table | undefined;
   rowsToInsert: any[][] = [];
   tableRowLength: number = NaN;
   rowIndex: number = NaN;
@@ -20,17 +36,19 @@ class InsertParser extends BaseStatementParser {
     const tableNameToken = this.lastExpectedToken as TokenLocation & {
       type: TokenType.identifier;
     };
-    this.table = this.database.getTable(tableName);
+    if (!this.database.getTable(tableName)) {
+      throw new ParseError(
+        `cannot insert into table ${tableName}, does not exist`,
+        tableNameToken
+      );
+    }
+    this.table = this.database.getTable(tableName)!;
     this.tableRowLength =
       1 +
       this.table!.columnMetadata.length +
       this.table!.externalRelationsMetadata.length;
     this.rowIndex = this.table!.rows.length;
     if (this.table === null) {
-      throw new ParseError(
-        `cannot insert into table ${tableName}, does not exist`,
-        tableNameToken
-      );
     }
     if (this.tokens.read().type === TokenType.openParantheses) {
       this.parseColumns(this.tokens.consume());
@@ -260,5 +278,5 @@ export const insertParserConfig: StatementConfig<InsertParser> = {
   statementDescription: "create new tables with references to other tables",
   firstKeyword: Keyword.insert,
   parserConstructor: InsertParser,
-  executorFactory: InsertExecutor,
+  executorConstructor: InsertExecutor,
 };
