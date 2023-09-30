@@ -35,7 +35,7 @@ export abstract class BaseSQLRunner {
   ) {
     this.statementParserMap = {};
     for (const parser of statementParsers) {
-      this.statementParserMap[parser.firstKeyword] = parser;
+      this.statementParserMap[parser.begin] = parser;
     }
   }
 
@@ -64,11 +64,11 @@ export abstract class BaseSQLRunner {
 export abstract class MultipleStatementSQLRunner extends BaseSQLRunner {}
 
 export interface StatementConfig<T extends StatementData> {
-  readonly statementName: string;
-  readonly statementDescription: string;
-  readonly firstKeyword: Keyword;
-  readonly parserConstructor: StatementParserConstructor<T>;
-  readonly executorConstructor: StatementExecutorFactory<T>;
+  readonly name: string;
+  readonly description: string;
+  readonly begin: Keyword;
+  readonly parser: StatementParserConstructor<T>;
+  readonly executor: StatementExecutorConstructor<T>;
 }
 
 export type StatementData = Readonly<Record<string, NotUndefined<any>>>;
@@ -76,12 +76,23 @@ export type StatementData = Readonly<Record<string, NotUndefined<any>>>;
 export type NotUndefined<T> = T extends undefined ? never : T;
 
 export interface StatementParserConstructor<T extends StatementData> {
-  new (tokens: TokenSource, database: Database): StatementParserType<T>;
+  new (tokens: TokenSource): StatementParserType<T>;
 }
 
-export interface StatementExecutorFactory<T extends StatementData> {
+export type StatementParserType<T extends StatementData> = StatementParser & {
+  [Key in keyof T]: T[Key] | undefined;
+};
+
+export abstract class StatementParser {
+  constructor(protected tokens: TokenSource) {}
+
+  public abstract parse(): void;
+}
+
+export interface StatementExecutorConstructor<T extends StatementData> {
   new (
     database: Database,
+    finishedTokenSource: TokenSource,
     runnerConfig: StatementConfig<StatementParserType<StatementData>>[],
     data: T,
     statementInformation: StatementConfig<StatementParserType<T>>,
@@ -112,6 +123,7 @@ export abstract class StatementExecutor<T extends StatementData>
 
   constructor(
     public database: Database,
+    public finishedTokenSource: TokenSource,
     public runnerConfig: StatementConfig<StatementParserType<StatementData>>[],
     public data: T,
     public statementInformation: StatementConfig<StatementParserType<T>>,
@@ -120,14 +132,4 @@ export abstract class StatementExecutor<T extends StatementData>
   ) {}
 
   public abstract execute(): void;
-}
-
-export type StatementParserType<T extends StatementData> = StatementParser & {
-  [Key in keyof T]: T[Key] | undefined;
-};
-
-export abstract class StatementParser {
-  constructor(protected tokens: TokenSource, protected database: Database) {}
-
-  public abstract parse(): void;
 }

@@ -132,7 +132,7 @@ export interface Relation {
 export interface Table {
   name: string;
   primaryColumnIds: ColumnMetdata[];
-  nameColumnIndexMapping: Record<string, ColumnMetdata>;
+  nameColumnMapping: Record<string, ColumnMetdata>;
   columnMetadata: ColumnMetdata[];
   // foreign keys are stored in the other table, it stores the reference to this table
   externalRelationsMetadata: Relation[]; // only external relations are in columns

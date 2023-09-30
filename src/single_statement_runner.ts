@@ -1,5 +1,5 @@
 import { Database } from "./database";
-import { ParseError } from "./error";
+import { ExecutionError, ParseError } from "./error";
 import {
   BaseSQLRunner,
   StatementConfig,
@@ -67,10 +67,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
       };
     }
     const statementConfig = this.statementParserMap[keyword]!;
-    const statementParser = new statementConfig.parserConstructor(
-      tokens,
-      this.database
-    );
+    const statementParser = new statementConfig.parser(tokens);
     try {
       statementParser.parse(); // TokenSource musst be on eof or semicolon, no other statement allowed
     } catch (e) {
@@ -89,7 +86,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
     ) {
       return {
         error: new ParseError(
-          `${statementConfig.statementName.toUpperCase()} statement is already finished, unexpected token`,
+          `${statementConfig.name.toUpperCase()} statement is already finished, unexpected token`,
           tokens.read()
         ),
       };
@@ -103,17 +100,26 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
         error: new ParseError("only one statement allowed", tokens.read()),
       };
     }
-    const executor = new statementConfig.executorConstructor(
+    const executor = new statementConfig.executor(
       this.database,
+      tokens,
       this.statementParsers as any,
       statementParser,
       statementConfig as any,
       startToken,
       endToken
     );
-    executor.execute();
-    if (executor.error) {
-      return { error: executor.error };
+    try {
+      executor.execute();
+    } catch (e) {
+      // for multiple statements give option to instantly stop and give back error, or give all results back
+      if (e instanceof ExecutionError) {
+        return {
+          error: e,
+        };
+      } else {
+        throw e;
+      }
     }
     return { results: [executor], error: null };
   }
