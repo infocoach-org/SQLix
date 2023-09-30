@@ -3,9 +3,7 @@ import { ExecutionError, ParseError } from "./error";
 import {
   BaseSQLRunner,
   StatementConfig,
-  StatementData,
   StatementExecutionResult,
-  StatementParser,
 } from "./nparser";
 import { Keyword, TokenSource, TokenType } from "./tokenizer";
 
@@ -18,7 +16,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
 
   constructor(
     database: Database,
-    statementParsers: StatementConfig<StatementData>[],
+    statementParsers: StatementConfig<any>[],
     config?: { atLeastOneStatement?: boolean }
   ) {
     config ??= {};
@@ -33,7 +31,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
       }
     | {
         error: null;
-        results: Iterable<StatementExecutionResult<StatementData>>;
+        results: Iterable<StatementExecutionResult<any>>;
       } {
     while (tokens.read().type === TokenType.semicolon) {
       tokens.consume();

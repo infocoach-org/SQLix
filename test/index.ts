@@ -1,19 +1,17 @@
 import { Database } from "../src/database";
-import { ParseError } from "../src/parse_error";
+import { ParseError } from "../src/error";
 import { SingleStatementSQLRunner } from "../src/single_statement_runner";
-import { CreateParserManager } from "../src/statements/create";
+import { createConfig } from "../src/statements/create";
 import { insertConfig } from "../src/statements/insert";
 
 const database = new Database();
 
-const statementsConfig = [new CreateParserManager(), new insertConfig()];
-
-const executor = new SingleStatementSQLRunner(database, statementsConfig);
+const executor = new SingleStatementSQLRunner(database, [createConfig]);
 
 function exe(text: string, print: boolean = false) {
   const res = executor.execute(text);
   if (print) console.log("\n\n" + text);
-  if (res.isError) {
+  if (res.error) {
     if (res.error instanceof ParseError) {
       console.log(text.substring(res.error.start, res.error.end));
       console.error(res.error.message);

@@ -26,12 +26,12 @@ interface ResultSet {
 
 export abstract class BaseSQLRunner {
   protected statementParserMap: {
-    [T in Keyword]?: StatementConfig<StatementData>;
+    [T in Keyword]?: StatementConfig<any>;
   };
 
   constructor(
     protected database: Database,
-    protected statementParsers: StatementConfig<StatementData>[]
+    protected statementParsers: StatementConfig<any>[]
   ) {
     this.statementParserMap = {};
     for (const parser of statementParsers) {
@@ -43,7 +43,7 @@ export abstract class BaseSQLRunner {
     | { error: TokenError | ParseError }
     | {
         error: null;
-        results: Iterable<StatementExecutionResult<StatementData>>;
+        results: Iterable<StatementExecutionResult<any>>;
       } {
     const tokenizer = new Tokenizer(sql);
     const tokenError = tokenizer.tokenize();
@@ -57,13 +57,13 @@ export abstract class BaseSQLRunner {
       }
     | {
         error: null;
-        results: Iterable<StatementExecutionResult<StatementData>>;
+        results: Iterable<StatementExecutionResult<any>>;
       };
 }
 
 export abstract class MultipleStatementSQLRunner extends BaseSQLRunner {}
 
-export interface StatementConfig<T extends StatementData> {
+export interface StatementConfig<T> {
   readonly name: string;
   readonly description: string;
   readonly begin: Keyword;
@@ -71,15 +71,11 @@ export interface StatementConfig<T extends StatementData> {
   readonly executor: StatementExecutorConstructor<T>;
 }
 
-export type StatementData = Readonly<Record<string, NotUndefined<any>>>;
-
-export type NotUndefined<T> = T extends undefined ? never : T;
-
-export interface StatementParserConstructor<T extends StatementData> {
+export interface StatementParserConstructor<T> {
   new (tokens: TokenSource): StatementParserType<T>;
 }
 
-export type StatementParserType<T extends StatementData> = StatementParser & {
+export type StatementParserType<T> = StatementParser & {
   [Key in keyof T]: T[Key] | undefined;
 };
 
@@ -89,11 +85,11 @@ export abstract class StatementParser {
   public abstract parse(): void;
 }
 
-export interface StatementExecutorConstructor<T extends StatementData> {
+export interface StatementExecutorConstructor<T> {
   new (
     database: Database,
     finishedTokenSource: TokenSource,
-    runnerConfig: StatementConfig<StatementParserType<StatementData>>[],
+    runnerConfig: StatementConfig<StatementParserType<any>>[],
     data: T,
     statementInformation: StatementConfig<StatementParserType<T>>,
     start: TokenLocation,
@@ -101,10 +97,10 @@ export interface StatementExecutorConstructor<T extends StatementData> {
   ): StatementExecutor<T>;
 }
 
-export interface StatementExecutionResult<T extends StatementData> {
+export interface StatementExecutionResult<T> {
   // TODO: should be added?
   readonly database: Database;
-  readonly runnerConfig: StatementConfig<StatementParserType<StatementData>>[];
+  readonly runnerConfig: StatementConfig<StatementParserType<any>>[];
   readonly error: ExecutionError | null;
   readonly informationStrings: string[] | [];
   readonly statementInformation: StatementConfig<StatementParserType<T>>;
@@ -114,7 +110,7 @@ export interface StatementExecutionResult<T extends StatementData> {
 }
 
 // soll extra klasse sein?
-export abstract class StatementExecutor<T extends StatementData>
+export abstract class StatementExecutor<T>
   implements StatementExecutionResult<T>
 {
   public error: ExecutionError | null = null;
@@ -124,7 +120,7 @@ export abstract class StatementExecutor<T extends StatementData>
   constructor(
     public database: Database,
     public finishedTokenSource: TokenSource,
-    public runnerConfig: StatementConfig<StatementParserType<StatementData>>[],
+    public runnerConfig: StatementConfig<StatementParserType<any>>[],
     public data: T,
     public statementInformation: StatementConfig<StatementParserType<T>>,
     public start: TokenLocation,

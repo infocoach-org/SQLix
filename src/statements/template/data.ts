@@ -1,3 +1,1 @@
-import { StatementData } from "../../nparser";
-
-export default interface TemplateData extends StatementData {}
+export default interface TemplateData {}
