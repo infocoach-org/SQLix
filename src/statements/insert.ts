@@ -1,20 +1,24 @@
+import { BaseStatementExecutor } from "../base_statement_executor";
 import { BaseStatementParser } from "../base_statement_parser";
-import { ColumnMetdata, Data, DataType, Relation, Table } from "../database";
+import {
+  ColumnMetdata as ColumnMetadata,
+  Data,
+  DataType,
+  Relation,
+  Table,
+} from "../database";
 import { ParseError } from "../error";
 import {
   StatementConfig,
   StatementData,
-  StatementExecutor,
   StatementParserType,
 } from "../nparser";
-import { Keyword, TokenLocation, TokenType } from "../tokenizer";
+import { Keyword, TokenType } from "../tokenizer";
 
 interface InsertData extends StatementData {
-  table: Table;
+  tableName: string;
   rowsToInsert: any[][];
-  tableRowLength: number;
-  rowIndex: number;
-  columnsToInsert: ColumnMetdata[];
+  columnsToInsert: string[] | null;
 }
 
 // currently all columns that have been given,
@@ -24,146 +28,257 @@ class InsertParser
   extends BaseStatementParser
   implements StatementParserType<InsertData>
 {
-  table: Table | undefined;
-  rowsToInsert: any[][] = [];
-  tableRowLength: number = NaN;
-  rowIndex: number = NaN;
-  columnsToInsert: ColumnMetdata[] = [];
+  tableName: string | undefined;
+  rowsToInsert: Data[][] = [];
+  columnsToInsert: string[] | null = null;
 
   public parse(): void {
     this.expectKeyword(Keyword.into);
-    const tableName = this.expectIdentifier("table name");
-    const tableNameToken = this.lastExpectedToken as TokenLocation & {
-      type: TokenType.identifier;
-    };
-    if (!this.database.getTable(tableName)) {
-      throw new ParseError(
-        `cannot insert into table ${tableName}, does not exist`,
-        tableNameToken
+    this.tableName = this.expectIdentifier("table name");
+
+    if (this.tokens.read().type === TokenType.openParantheses) {
+      this.tokens.consume();
+      this.parseExplicitGivenColumns();
+    }
+    this.expectKeyword(Keyword.values);
+    this.parseMoreThanOne(this.parseAndInsertValueRow);
+  }
+
+  private expectValue(): Data {
+    const token = this.tokens.consume();
+    switch (token.type) {
+      case TokenType.string:
+      case TokenType.number:
+        return token.value;
+      case TokenType.keyword:
+        switch (token.tokenId) {
+          case Keyword.null:
+            return null;
+          case Keyword.true:
+            return true;
+          case Keyword.false:
+            return false;
+        }
+    }
+    throw new ParseError(
+      "constant value expected, such as a string, number, boolean or null",
+      token
+    );
+  }
+
+  private parseAndInsertValueRow() {
+    this.expectType(TokenType.openParantheses);
+    let row = [];
+    let firstValue = true;
+    while (this.tokens.read().type != TokenType.eof) {
+      if (!firstValue) {
+        if (this.tokens.read().type != TokenType.comma) {
+          break;
+        }
+      } else {
+        firstValue = false;
+      }
+      row.push(this.expectValue());
+    }
+    this.expectType(TokenType.closedParantheses);
+    this.rowsToInsert.push(row);
+  }
+
+  private parseExplicitGivenColumns() {
+    // TODO: replace parseMoreThanOne, as insert into a () also allowed
+    this.columnsToInsert = [];
+    this.parseMoreThanOne(() => {
+      const columnName = this.expectIdentifier("column name");
+      if (this.columnsToInsert!.some((column) => column === columnName)) {
+        this.lastExpectedTokenError(
+          `column ${columnName} cannot be inserted twice`
+        );
+      }
+      this.columnsToInsert!.push(columnName);
+    });
+    this.expectType(TokenType.closedParantheses);
+  }
+}
+
+class InsertExecutor extends BaseStatementExecutor<InsertData> {
+  private table: Table | null = null;
+  private relativeTokenIndex = 3;
+  private tableRowLength: number = NaN;
+  private rowIndex: number = NaN;
+  private columns: ColumnMetadata[] | undefined;
+  private rowsToInsert: any[][] = [];
+
+  public execute(): void {
+    this.checkTable();
+    this.checkColumns();
+    this.checkRows();
+    this.table!.rows.push(...this.rowsToInsert);
+  }
+
+  private static *combineIterator<T>(
+    a: Iterable<T>,
+    b: Iterable<T>
+  ): Iterable<T> {
+    yield* a;
+    yield* b;
+  }
+
+  private checkTable() {
+    this.table = this.database.getTable(this.data.tableName);
+    if (this.table) {
+      this.relativeTokenError(
+        `cannot insert into table ${this.data.tableName}, does not exist`,
+        2
       );
     }
-    this.table = this.database.getTable(tableName)!;
     this.tableRowLength =
       1 +
       this.table!.columnMetadata.length +
       this.table!.externalRelationsMetadata.length;
     this.rowIndex = this.table!.rows.length;
-    if (this.table === null) {
-    }
-    if (this.tokens.read().type === TokenType.openParantheses) {
-      this.parseColumns(this.tokens.consume());
-    } else {
-      this.columnsToInsert = this.table.columnMetadata;
-    }
-    this.expectKeyword(Keyword.values);
-    this.parseMoreThanOne(this.parseAndInsertValueRow);
-    this.table.rows.push(...this.rowsToInsert);
   }
 
-  private expectValue(column: ColumnMetdata): Data {
-    const allowedDataType = column.type;
-    const token = this.tokens.consume();
-    const notAllowed = (actualType: string) => {
-      throw new ParseError(
-        `${actualType} not allowed in column ${column.name}, ` +
-          `type ${allowedDataType} expected`,
-        token
-      );
-    };
-    switch (token.type) {
-      case TokenType.number:
-        if (allowedDataType !== DataType.float) {
-          if (allowedDataType === DataType.int) {
-            if (token.hasPoint) {
-              throw new ParseError(
-                `only integers, not floating point numbers, are allowed in column ${column.name}`,
-                token
-              );
-            }
-          } else notAllowed("NUMBER");
+  private checkColumns() {
+    if (this.data.columnsToInsert) {
+      this.relativeTokenIndex = 6 + this.data.columnsToInsert.length * 2;
+      this.columns = this.data.columnsToInsert.map((columnName, index) => {
+        const column = this.table!.nameColumnMapping[columnName];
+        if (!column) {
+          this.relativeTokenError(
+            `column ${column} does not exist in table ${this.data.tableName}`,
+            4 + index * 2
+          );
         }
-        return token.value;
-      case TokenType.string:
-        if (allowedDataType !== DataType.text) {
-          notAllowed("text");
-        }
-        return token.value;
-      case TokenType.keyword:
-        if (token.tokenId === Keyword.null) {
-          if (!column.nullable) {
-            throw new ParseError(
-              `column ${column.name} is not nullable`,
-              token
-            );
-          }
-        } else if (token.tokenId === Keyword.default) {
-          if (!column.nullable) {
-            throw new ParseError(
-              `default of column ${column.name} is null, but column ${column.name} is not nullable`,
-              token
-            );
-          }
-        } else if (
-          token.tokenId === Keyword.true ||
-          token.tokenId === Keyword.false
-        ) {
-          const val = token.tokenId === Keyword.true;
-          if (allowedDataType !== DataType.boolean) {
-            if (
-              allowedDataType === DataType.int ||
-              allowedDataType === DataType.float
-            ) {
-              return +val;
-            } else {
-              notAllowed("BOOLEAN");
-            }
-          }
-          return val;
-        }
-    }
-    if (token.type === TokenType.closedParantheses) {
-      throw new ParseError(
-        `A constant value has to be given for column ${column.name}`,
-        token
-      );
-    } else {
-      throw new ParseError(
-        `Not a valid value, a value of type ${allowedDataType} is expected for the column ${column.name}`,
-        token
-      );
-    }
-  }
-
-  private parseAndInsertValueRow() {
-    const beginToken = this.expectType(TokenType.openParantheses);
-    let row = Array(this.tableRowLength).fill(undefined);
-    for (let i = 0; i < this.columnsToInsert.length; i++) {
-      const columnMetadata = this.columnsToInsert[i];
-      const value = this.expectValue(columnMetadata);
-      row[columnMetadata.columnIndex + 1] = value;
-      const isLastColumn = i === this.columnsToInsert.length - 1;
-      if (!isLastColumn) {
-        const commaToken = this.tokens.consume();
-        if (commaToken.type !== TokenType.comma) {
-          const nextColumnName = this.columnsToInsert[i + 1].name;
-          if (commaToken.type === TokenType.closedParantheses) {
-            throw new ParseError(
-              `could not insert rows, expected further value for column ${nextColumnName}, for each row ${this.columnsToInsert.length} column values have to be given`,
-              commaToken
-            );
-          }
-          throw new ParseError(
-            `could not insert rows, comma expected to seperate next value for column ${nextColumnName}`,
-            commaToken
+        return column;
+      });
+      for (const column of this.table!.columnMetadata) {
+        if (!this.columns.includes(column) && !column.nullable) {
+          this.relativeTokenError(
+            `columns that should be inserted should contain column ${column.name}, as it is not nullable`,
+            3,
+            this.columns.length * 2
           );
         }
       }
+    } else {
+      this.relativeTokenIndex = 5;
+      this.columns = this.table!.columnMetadata;
     }
-    const endToken = this.expectType(TokenType.closedParantheses);
-    // check relations, and insert if they exist
+    // at the end the relativeTokenIndex should be at the token of the first value of the first frow
+  }
+
+  private columnNames(columns: ColumnMetadata[]): string {
+    return columns.reduce((s, column, index, arr) => {
+      if (index === 0) {
+        return column.name;
+      }
+      if (index === arr.length - 1) {
+        return `${s}, ${column.name}`;
+      }
+      return `${s} and ${column.name}`;
+    }, "");
+  }
+
+  private throwValueWrongDataTypeError(
+    columnName: string,
+    expected: string,
+    actual: string
+  ): never {
+    this.relativeTokenError(
+      `column ${columnName} is of type ${expected} and cannot accept a value of type ${actual.toUpperCase()}`,
+      this.relativeTokenIndex
+    );
+  }
+
+  private checkRowValueDataType(
+    column: ColumnMetadata,
+    data: string | number | boolean
+  ): string | number | boolean {
+    const expectedType = column.type;
+    switch (expectedType) {
+      case DataType.boolean:
+        if (data === 1 || data === 0 || data === true || data === false) {
+          return data;
+        }
+        this.throwValueWrongDataTypeError(column.name, "BOOLEAN", typeof data);
+      case DataType.int:
+      case DataType.float:
+        if (data === true) {
+          return 1;
+        }
+        if (data === false) {
+          return 0;
+        }
+        if (
+          typeof data === "number" &&
+          (expectedType !== DataType.int || Number.isInteger(data))
+        ) {
+          return data;
+        }
+        this.throwValueWrongDataTypeError(column.name, "INT", typeof data);
+      default:
+        if (typeof data === "string") {
+          return data;
+        }
+        this.throwValueWrongDataTypeError(column.name, "TEXT", typeof data);
+    }
+  }
+
+  private checkRowLength(row: Data[]): void {
+    if (row.length < this.columns!.length) {
+      const excessColumns = this.columns!.slice(row.length);
+      const plural = excessColumns.length > 1 ? "s" : "";
+      this.relativeTokenError(
+        `value${plural} expected for column${plural}: ${this.columnNames(
+          excessColumns
+        )}`,
+        this.relativeTokenIndex + (row.length - 1) * 2
+      );
+    } else if (row.length > this.columns!.length) {
+      const plural = this.columns!.length > 1 ? "s" : "";
+      this.relativeTokenError(
+        `only expected ${
+          this.columns!.length
+        } value${plural} for column${plural}: ${this.columnNames(
+          this.columns!
+        )}, instead got ${row.length} values`,
+        this.relativeTokenIndex,
+        this.relativeTokenIndex + (row.length - 1) * 2
+      );
+    }
+  }
+
+  private checkAndCreateRowToInsert(row: Data[]): Data[] {
+    const rowToInsert = Array(this.tableRowLength).fill(undefined);
+    for (let i = 0; i < row.length; i++) {
+      const data = row[i];
+      const columnMetadata = this.columns![i];
+      if (data === null) {
+        if (!columnMetadata.nullable) {
+          this.relativeTokenError(
+            `column ${columnMetadata.name} is not nullable`,
+            this.relativeTokenIndex
+          );
+        }
+        rowToInsert[columnMetadata.columnIndex + 1] = null;
+      } else {
+        rowToInsert[columnMetadata.columnIndex + 1] =
+          this.checkRowValueDataType(columnMetadata, data);
+      }
+      rowToInsert[0] = this.rowIndex++;
+      this.relativeTokenIndex += 2; // relativeTokenIndex is at token of the first value of the next value
+    }
+    return rowToInsert;
+  }
+
+  private checkRowForeignConstraints(
+    rowToInsert: Data[],
+    rowBegin: number,
+    rowEnd: number
+  ): void {
     relations: for (const relation of this.table!.internalRelationsMetadata) {
       // if not all relation columns are null => relation has to be checked
-      if (relation.fromColumnIds.some((i) => row[i + 1] !== null)) {
+      if (relation.fromColumnIds.some((i) => rowToInsert[i + 1] !== null)) {
         // look for row which map
         rows: for (const toRow of relation.to.rows) {
           for (
@@ -172,7 +287,7 @@ class InsertParser
             relationColumnIndex++
           ) {
             const fromVal =
-              row[relation.fromColumnIds[relationColumnIndex] + 1];
+              rowToInsert[relation.fromColumnIds[relationColumnIndex] + 1];
             const toVal = toRow[relation.toColumnIds[relationColumnIndex] + 1];
             if (fromVal !== toVal) {
               continue rows;
@@ -184,41 +299,57 @@ class InsertParser
             1 +
             relation.to.externalRelationsMetadata.indexOf(relation);
           const relations: any[][] = toRow[otherTableRelationRowIndex] ?? [];
-          relations.push(row);
+          relations.push(rowToInsert);
           toRow[otherTableRelationRowIndex] = relations;
           continue relations;
         }
-        throw new ParseError(
-          `could not insert rows, becuase this row does not fullfill constraint ${this.relationToString(
+        this.relativeTokenError(
+          `could not insert rows, because this row does not fullfill constraint ${this.relationToString(
             relation
           )}`,
-          beginToken,
-          endToken
+          rowBegin,
+          rowEnd
         );
       }
     }
-    // check if primary key exists
+  }
+
+  private checkIfRowPrimaryKeyUnique(
+    rowToinsert: Data[],
+    rowBegin: number,
+    rowEnd: number
+  ) {
     if (this.table!.primaryColumnIds.length !== 0) {
       // check if primary key is unique
-      oldRows: for (const oldRow of InsertParser.combineIterator(
+      oldRows: for (const oldRow of InsertExecutor.combineIterator(
         this.table!.rows,
         this.rowsToInsert
       )) {
         for (const { columnIndex } of this.table!.primaryColumnIds) {
-          if (row[columnIndex + 1] !== oldRow[columnIndex + 1]) {
+          if (rowToinsert[columnIndex + 1] !== oldRow[columnIndex + 1]) {
             continue oldRows;
           }
         }
-        throw new ParseError(
+        throw this.relativeTokenError(
           "could not insert rows, because row already exists with identical primary key",
-          beginToken,
-          endToken
+          rowBegin,
+          rowEnd
         );
       }
     }
-    // set row index
-    row[0] = this.rowIndex++;
-    this.rowsToInsert.push(row);
+  }
+
+  private checkRows() {
+    for (const row of this.data.rowsToInsert) {
+      const rowBegin = this.relativeTokenIndex;
+      const rowEnd = rowBegin + (this.columns!.length - 1) * 2;
+      this.checkRowLength(row);
+      const rowToInsert = this.checkAndCreateRowToInsert(row);
+      this.checkIfRowPrimaryKeyUnique(rowToInsert, rowBegin, rowEnd);
+      this.checkRowForeignConstraints(rowToInsert, rowBegin, rowEnd);
+      this.rowsToInsert.push(rowToInsert);
+    }
+    this.relativeTokenIndex += 2; // relativeTokenIndex is at token of the first value of the next row
   }
 
   private relationToString(relation: Relation): string {
@@ -228,52 +359,9 @@ class InsertParser
       (index) => relation.to.columnMetadata[index].name
     )})`;
   }
-
-  private static *combineIterator<T>(
-    a: Iterable<T>,
-    b: Iterable<T>
-  ): Iterable<T> {
-    yield* a;
-    yield* b;
-  }
-
-  private parseColumns(beginToken: TokenLocation) {
-    // TODO: replace with parseMoreThanOne, as insert into a () also allowed
-    this.parseMoreThanOne(() => {
-      const columnName = this.expectIdentifier("column name");
-      if (this.columnsToInsert.some((column) => column.name === columnName)) {
-        this.lastExpectedTokenError(
-          `column ${columnName} cannot be inserted twice`
-        );
-      }
-      if (columnName in this.table!.nameColumnIndexMapping) {
-        this.columnsToInsert.push(
-          this.table!.nameColumnIndexMapping[columnName]
-        );
-      } else {
-        this.lastExpectedTokenError(`column does not exist`);
-      }
-    });
-    this.expectType(TokenType.closedParantheses);
-    for (const column of this.table!.columnMetadata) {
-      if (!this.columnsToInsert.includes(column) && !column.nullable) {
-        throw new ParseError(
-          `columns that should be inserted should contain column ${column.name}, as it is not nullable`,
-          beginToken,
-          this.lastExpectedToken
-        );
-      }
-    }
-  }
 }
 
-class InsertExecutor extends StatementExecutor<InsertData> {
-  public execute(): void {
-    throw new Error("Method not implemented.");
-  }
-}
-
-export const insertConfig = {
+export const insertConfig: StatementConfig<InsertData> = {
   name: "insert rows",
   description: "create new tables with references to other tables",
   begin: Keyword.insert,
