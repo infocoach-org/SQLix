@@ -1,5 +1,5 @@
-import { ColumnMetdata, DataType, Relation, Table } from "../database";
-import { StatementParser, StatementConfig, typeMapping } from "../nparser";
+import { ColumnMetadata, DataType, Relation, Table } from "../database";
+import { StatementParser, StatementConfig } from "../nparser";
 import { Keyword, TokenLocation, TokenType } from "../tokenizer";
 
 // FOREIGN KEYS => foreign key(a,b) references a(a,b), cannot be a(b,a)
@@ -28,14 +28,6 @@ interface RelationToInsert {
   columnsFrom: string[];
   // if columnsTo is null, columnsFrom can only be not null
   columnsTo: string[] | null;
-}
-
-export class CreateParserManager extends StatementConfig<null> {
-  statementName = "create tables";
-  statementDescription = "create new tables with references to other tables";
-  firstKeyword = Keyword.create;
-  requiredStatementState = null;
-  parser = CreateParser;
 }
 
 export class CreateParser extends StatementParser {
@@ -109,7 +101,7 @@ export class CreateParser extends StatementParser {
         );
       }
     }
-    const columns: ColumnMetdata[] = this.columns.map((column, index) => {
+    const columns: ColumnMetadata[] = this.columns.map((column, index) => {
       if (this.primaryKeys.includes(column.name)) {
         return {
           name: column.name,
@@ -129,7 +121,7 @@ export class CreateParser extends StatementParser {
         columnIndex: index,
       };
     });
-    const columnsMapping: Record<string, ColumnMetdata> = {};
+    const columnsMapping: Record<string, ColumnMetadata> = {};
     for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
       const column = columns[columnIndex];
       columnsMapping[column.name] = column;
@@ -159,7 +151,7 @@ export class CreateParser extends StatementParser {
           rawRelation.tokenEnd
         );
       }
-      let toColumns: ColumnMetdata[];
+      let toColumns: ColumnMetadata[];
       if (rawRelation.columnsTo === null) {
         toColumns = toTable.primaryColumnIds.map(
           ({ columnIndex: id }) => toTable.columnMetadata[id]
@@ -413,4 +405,12 @@ export class CreateParser extends StatementParser {
     }
     this.columns.push({ nullable, type: typeName, name });
   }
+}
+
+export class CreateParserManager extends StatementConfig<null> {
+  statementName = "create tables";
+  statementDescription = "create new tables with references to other tables";
+  firstKeyword = Keyword.create;
+  requiredStatementState = null;
+  parser = CreateParser;
 }

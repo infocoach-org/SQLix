@@ -3,14 +3,21 @@
   "version": "0.0.1",
   "description": "",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "template": "node template_creator/index.mjs"
+  },
   "keywords": [
     "sql"
   ],
   "author": "Tony Borchert",
   "dependencies": {
+    "change-case": "^5.0.1",
     "ts-node": "^10.9.1",
     "tsc": "^2.0.4",
     "typescript": "^5.2.2"
+  },
+  "devDependencies": {
+    "fs-extra": "^11.1.1",
+    "replace-in-file": "^7.0.1"
   }
 }

@@ -5,6 +5,15 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Run template",
+      "request": "launch",
+      "runtimeArgs": ["run-script", "template"],
+      "args": ["/tmp", "Penis"],
+      "runtimeExecutable": "npm",
+      "skipFiles": ["<node_internals>/**"],
+      "type": "node"
+    },
+    {
       "type": "node",
       "request": "launch",
       "name": "Launch test tsc",
