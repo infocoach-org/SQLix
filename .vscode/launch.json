@@ -5,10 +5,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run template",
+      "name": "Run template test",
       "request": "launch",
       "runtimeArgs": ["run-script", "template"],
-      "args": ["/tmp", "Penis"],
+      "args": ["/tmp", "Auto"],
       "runtimeExecutable": "npm",
       "skipFiles": ["<node_internals>/**"],
       "type": "node"

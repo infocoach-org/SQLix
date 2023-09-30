@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "template": "node template_creator/index.mjs"
+    "template": "node template.mjs"
   },
   "keywords": [
     "sql"
