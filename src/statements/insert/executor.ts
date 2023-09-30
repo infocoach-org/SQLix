@@ -1,7 +1,7 @@
 import { BaseStatementExecutor } from "../../base_statement_executor";
 import InsertData from "./data";
 import {
-  ColumnMetdata as ColumnMetadata,
+  ColumnMetadata as ColumnMetadata,
   Data,
   DataType,
   Relation,

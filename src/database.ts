@@ -110,7 +110,7 @@ interface BaseColumnMetadata {
 //   constructor();
 // }
 
-export type ColumnMetdata = BaseColumnMetadata &
+export type ColumnMetadata = BaseColumnMetadata &
   (
     | {
         nullable: boolean;
@@ -131,9 +131,9 @@ export interface Relation {
 
 export interface Table {
   name: string;
-  primaryColumnIds: ColumnMetdata[];
-  nameColumnMapping: Record<string, ColumnMetdata>;
-  columnMetadata: ColumnMetdata[];
+  primaryColumnIds: ColumnMetadata[];
+  nameColumnMapping: Record<string, ColumnMetadata>;
+  columnMetadata: ColumnMetadata[];
   // foreign keys are stored in the other table, it stores the reference to this table
   externalRelationsMetadata: Relation[]; // only external relations are in columns
   internalRelationsMetadata: Relation[];
