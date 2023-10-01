@@ -24,17 +24,14 @@ interface ResultSet {
   nextRow(): boolean;
 }
 
-export abstract class BaseSQLRunner {
+export abstract class BaseSQLRunner<Config extends RunnerConfig> {
   protected statementParserMap: {
     [T in Keyword]?: StatementConfig<any>;
   };
 
-  constructor(
-    protected database: Database,
-    protected statementParsers: StatementConfig<any>[]
-  ) {
+  constructor(protected config: Config) {
     this.statementParserMap = {};
-    for (const parser of statementParsers) {
+    for (const parser of config.statements) {
       this.statementParserMap[parser.begin] = parser;
     }
   }
@@ -61,7 +58,13 @@ export abstract class BaseSQLRunner {
       };
 }
 
-export abstract class MultipleStatementSQLRunner extends BaseSQLRunner {}
+export abstract class MultipleStatementSQLRunner extends BaseSQLRunner<RunnerConfig> {}
+
+export interface RunnerConfig {
+  readonly databaes: Database;
+  readonly statements: StatementConfig<any>[];
+  readonly notAllowedStatements: Keyword[];
+}
 
 export interface StatementConfig<T> {
   readonly name: string;
@@ -87,9 +90,8 @@ export abstract class StatementParser {
 
 export interface StatementExecutorConstructor<T> {
   new (
-    database: Database,
+    runnerConfig: RunnerConfig,
     finishedTokenSource: TokenSource,
-    runnerConfig: StatementConfig<StatementParserType<any>>[],
     data: T,
     statementInformation: StatementConfig<StatementParserType<T>>,
     start: TokenLocation,
@@ -99,8 +101,7 @@ export interface StatementExecutorConstructor<T> {
 
 export interface StatementExecutionResult<T> {
   // TODO: should be added?
-  readonly database: Database;
-  readonly runnerConfig: StatementConfig<StatementParserType<any>>[];
+  readonly runnerConfig: RunnerConfig;
   readonly error: ExecutionError | null;
   readonly informationStrings: string[] | [];
   readonly statementInformation: StatementConfig<StatementParserType<T>>;
@@ -118,9 +119,8 @@ export abstract class StatementExecutor<T>
   public informationStrings: string[] = [];
 
   constructor(
-    public database: Database,
+    public runnerConfig: RunnerConfig,
     public finishedTokenSource: TokenSource,
-    public runnerConfig: StatementConfig<StatementParserType<any>>[],
     public data: T,
     public statementInformation: StatementConfig<StatementParserType<T>>,
     public start: TokenLocation,

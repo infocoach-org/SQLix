@@ -2,26 +2,21 @@ import { Database } from "./database";
 import { ExecutionError, ParseError } from "./error";
 import {
   BaseSQLRunner,
+  RunnerConfig,
   StatementConfig,
   StatementExecutionResult,
 } from "./nparser";
 import { Keyword, TokenSource, TokenType } from "./tokenizer";
 
-type SingleStatementSQLRunnerConfig = {
-  atLeastOneStatement: boolean;
-};
+interface SingleStatementSQLRunnerConfig extends RunnerConfig {
+  // default false
+  atLeastOneStatement?: boolean;
+}
 
-export class SingleStatementSQLRunner extends BaseSQLRunner {
-  private config: SingleStatementSQLRunnerConfig;
-
-  constructor(
-    database: Database,
-    statementParsers: StatementConfig<any>[],
-    config?: { atLeastOneStatement?: boolean }
-  ) {
-    config ??= {};
+export class SingleStatementSQLRunner extends BaseSQLRunner<SingleStatementSQLRunnerConfig> {
+  constructor(config: SingleStatementSQLRunnerConfig) {
     config.atLeastOneStatement ??= false;
-    super(database, statementParsers);
+    super(config);
     this.config = config as SingleStatementSQLRunnerConfig;
   }
 
@@ -99,9 +94,8 @@ export class SingleStatementSQLRunner extends BaseSQLRunner {
       };
     }
     const executor = new statementConfig.executor(
-      this.database,
+      this.config,
       tokens,
-      this.statementParsers as any,
       statementParser,
       statementConfig as any,
       startToken,
