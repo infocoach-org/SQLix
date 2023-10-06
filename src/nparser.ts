@@ -5,6 +5,7 @@ import {
   ListTokenSource,
   TokenLocation,
   TokenSource,
+  TokenType,
   Tokenizer,
 } from "./tokenizer";
 
@@ -25,11 +26,11 @@ interface ResultSet {
 }
 
 export abstract class BaseSQLRunner<Config extends RunnerConfig> {
-  protected statementParserMap: {
+  private statementParserMap: {
     [T in Keyword]?: StatementConfig<any>;
   };
 
-  constructor(protected config: Config) {
+  constructor(protected config: Config, protected database: Database) {
     this.statementParserMap = {};
     for (const parser of config.statements) {
       this.statementParserMap[parser.begin] = parser;
@@ -48,6 +49,29 @@ export abstract class BaseSQLRunner<Config extends RunnerConfig> {
     return this.run(new ListTokenSource(tokenizer.tokens));
   }
 
+  getStatementConfig(
+    token: TokenLocation & { type: TokenType.keyword }
+  ): StatementConfig<any> {
+    const statementConfig = this.statementParserMap[token.tokenId as Keyword];
+    if (!statementConfig) {
+      if (this.config.notAllowedStatements.includes(token.tokenId)) {
+        throw new ParseError(
+          `Statement ${(
+            token.tokenId as Keyword
+          ).toUpperCase()} not allowed, allowed statements: ${this.config.statements.map(
+            (statement) => statement.begin
+          )}`,
+          token
+        );
+      }
+      throw new ParseError(
+        `no statement begins with the keyword ${token.tokenId}`,
+        token
+      );
+    }
+    return statementConfig;
+  }
+
   protected abstract run(tokens: TokenSource):
     | {
         error: ParseError;
@@ -61,7 +85,6 @@ export abstract class BaseSQLRunner<Config extends RunnerConfig> {
 export abstract class MultipleStatementSQLRunner extends BaseSQLRunner<RunnerConfig> {}
 
 export interface RunnerConfig {
-  readonly databaes: Database;
   readonly statements: StatementConfig<any>[];
   readonly notAllowedStatements: Keyword[];
 }
@@ -90,6 +113,7 @@ export abstract class StatementParser {
 
 export interface StatementExecutorConstructor<T> {
   new (
+    database: Database,
     runnerConfig: RunnerConfig,
     finishedTokenSource: TokenSource,
     data: T,
@@ -101,6 +125,7 @@ export interface StatementExecutorConstructor<T> {
 
 export interface StatementExecutionResult<T> {
   // TODO: should be added?
+  readonly database: Database;
   readonly runnerConfig: RunnerConfig;
   readonly error: ExecutionError | null;
   readonly informationStrings: string[] | [];
@@ -119,6 +144,7 @@ export abstract class StatementExecutor<T>
   public informationStrings: string[] = [];
 
   constructor(
+    public database: Database,
     public runnerConfig: RunnerConfig,
     public finishedTokenSource: TokenSource,
     public data: T,

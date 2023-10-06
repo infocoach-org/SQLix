@@ -3,7 +3,6 @@ import { ExecutionError, ParseError } from "./error";
 import {
   BaseSQLRunner,
   RunnerConfig,
-  StatementConfig,
   StatementExecutionResult,
 } from "./nparser";
 import { Keyword, TokenSource, TokenType } from "./tokenizer";
@@ -14,9 +13,9 @@ interface SingleStatementSQLRunnerConfig extends RunnerConfig {
 }
 
 export class SingleStatementSQLRunner extends BaseSQLRunner<SingleStatementSQLRunnerConfig> {
-  constructor(config: SingleStatementSQLRunnerConfig) {
+  constructor(config: SingleStatementSQLRunnerConfig, database: Database) {
     config.atLeastOneStatement ??= false;
-    super(config);
+    super(config, database);
     this.config = config as SingleStatementSQLRunnerConfig;
   }
 
@@ -50,16 +49,8 @@ export class SingleStatementSQLRunner extends BaseSQLRunner<SingleStatementSQLRu
         error: new ParseError("statements begin with a keyword", startToken),
       };
     }
-    const keyword = startToken.tokenId as Keyword;
-    if (!(keyword in this.statementParserMap)) {
-      return {
-        error: new ParseError(
-          `no statement begins with the keyword ${keyword}`,
-          startToken
-        ),
-      };
-    }
-    const statementConfig = this.statementParserMap[keyword]!;
+    const statementConfig = this.getStatementConfig(startToken);
+
     const statementParser = new statementConfig.parser(tokens);
     try {
       statementParser.parse(); // TokenSource musst be on eof or semicolon, no other statement allowed
@@ -94,6 +85,7 @@ export class SingleStatementSQLRunner extends BaseSQLRunner<SingleStatementSQLRu
       };
     }
     const executor = new statementConfig.executor(
+      this.database,
       this.config,
       tokens,
       statementParser,
