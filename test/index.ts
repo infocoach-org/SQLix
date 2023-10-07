@@ -1,24 +1,34 @@
 import { Database } from "../src/database";
-import { ParseError } from "../src/error";
+import { ParseError, SqlBaseError, TokenBasedError } from "../src/error";
 import { SingleStatementSQLRunner } from "../src/single_statement_runner";
 import { createConfig } from "../src/statements/create";
 import { insertConfig } from "../src/statements/insert";
+import { Keyword } from "../src/tokenizer";
+import consoleErrorFormat from "../src/utils/console_error_format";
 
 const database = new Database();
 
-const executor = new SingleStatementSQLRunner(database, [createConfig]);
+const executor = new SingleStatementSQLRunner(
+  {
+    statements: [createConfig, insertConfig],
+    notAllowedStatements: [Keyword.select],
+  },
+  database
+);
 
 function exe(text: string, print: boolean = false) {
   const res = executor.execute(text);
-  if (print) console.log("\n\n" + text);
   if (res.error) {
-    if (res.error instanceof ParseError) {
-      console.log(text.substring(res.error.start, res.error.end));
+    if (res.error instanceof SqlBaseError) {
+      console.log(consoleErrorFormat(text, res.error));
       console.error(res.error.message);
+      console.log("\n\n");
     } else {
+      console.log("\n\n" + text);
       console.error(res);
     }
   } else if (print) {
+    if (print) console.log("\n\n" + text);
     database.printAllTableSchemas();
   }
 }

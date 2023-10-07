@@ -47,7 +47,7 @@ export type TokenErrorInformation =
       customErrorString: string | null;
     };
 
-abstract class TokenBasedError extends SqlBaseError {
+export abstract class TokenBasedError extends SqlBaseError {
   constructor(
     errorMessage: string,
     private startToken: TokenLocation,
