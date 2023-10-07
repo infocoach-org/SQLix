@@ -1,5 +1,5 @@
 import { Database } from "../src/database";
-import { ParseError, SqlBaseError, TokenBasedError } from "../src/error";
+import { SqlBaseError } from "../src/error";
 import { SingleStatementSQLRunner } from "../src/single_statement_runner";
 import { createConfig } from "../src/statements/create";
 import { insertConfig } from "../src/statements/insert";
