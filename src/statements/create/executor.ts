@@ -8,6 +8,7 @@ export default class CreateExecutor extends BaseStatementExecutor<CreateData> {
     if (this.database.getTable(this.data.tableName) !== null) {
       throw `table ${this.data.tableName} already exists`;
     }
+    this.createNewTable();
   }
 
   private createNewTable() {

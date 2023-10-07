@@ -33,7 +33,7 @@ export default class InsertExecutor extends BaseStatementExecutor<InsertData> {
 
   private checkTable() {
     this.table = this.database.getTable(this.data.tableName);
-    if (this.table) {
+    if (!this.table) {
       this.relativeTokenError(
         `cannot insert into table ${this.data.tableName}, does not exist`,
         2
@@ -61,11 +61,10 @@ export default class InsertExecutor extends BaseStatementExecutor<InsertData> {
       });
       for (const column of this.table!.columnMetadata) {
         if (!this.columns.includes(column) && !column.nullable) {
-          this.relativeTokenError(
-            `columns that should be inserted should contain column ${column.name}, as it is not nullable`,
-            3,
-            this.columns.length * 2
-          );
+          const errorMsg = `rows inserted in table ${
+            this.table!.name
+          } should contain column ${column.name}, as it is not nullable`;
+          this.relativeTokenError(errorMsg, 3, 3 + this.columns.length * 2);
         }
       }
     } else {
@@ -140,7 +139,7 @@ export default class InsertExecutor extends BaseStatementExecutor<InsertData> {
         `value${plural} expected for column${plural}: ${this.columnNames(
           excessColumns
         )}`,
-        this.relativeTokenIndex + (row.length - 1) * 2
+        this.relativeTokenIndex + (row.length - 1) * 2 + 1
       );
     } else if (row.length > this.columns!.length) {
       const plural = this.columns!.length > 1 ? "s" : "";
@@ -249,8 +248,8 @@ export default class InsertExecutor extends BaseStatementExecutor<InsertData> {
 
   private checkRows() {
     for (const row of this.data.rowsToInsert) {
-      const rowBegin = this.relativeTokenIndex;
-      const rowEnd = rowBegin + (this.columns!.length - 1) * 2;
+      const rowBegin = this.relativeTokenIndex - 1;
+      const rowEnd = rowBegin + this.columns!.length * 2;
       this.checkRowLength(row);
       const rowToInsert = this.checkAndCreateRowToInsert(row);
       this.checkIfRowPrimaryKeyUnique(rowToInsert, rowBegin, rowEnd);

@@ -59,6 +59,8 @@ export default class InsertParser
       if (!firstValue) {
         if (this.tokens.read().type != TokenType.comma) {
           break;
+        } else {
+          this.tokens.consume();
         }
       } else {
         firstValue = false;

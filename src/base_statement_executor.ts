@@ -1,9 +1,7 @@
 import { ExecutionError } from "./error";
-import { StatementData, StatementExecutor } from "./nparser";
+import { StatementExecutor } from "./nparser";
 
-export abstract class BaseStatementExecutor<
-  T extends StatementData
-> extends StatementExecutor<T> {
+export abstract class BaseStatementExecutor<T> extends StatementExecutor<T> {
   protected relativeTokenError(
     message: string,
     beginRelativeTokenIndex: number,
